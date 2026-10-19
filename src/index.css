@@ -1,0 +1,157 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root,
+.light {
+  --bg: #F5F6FA;
+  --bg-elevated: #FFFFFF;
+  --bg-muted: #EEF0F6;
+  --bg-sidebar: #FFFFFF;
+  --text: #1A1D26;
+  --text-muted: #6B7280;
+  --text-subtle: #9CA3AF;
+  --border: rgba(26, 29, 38, 0.08);
+  --border-strong: rgba(26, 29, 38, 0.15);
+  --primary: #7C3AED;
+  --primary-soft: rgba(124, 58, 237, 0.12);
+  --primary-glow: rgba(124, 58, 237, 0.25);
+  --accent: #3D5AFE;
+  --navy: #1A1F36;
+  --success: #00C48C;
+  --danger: #FF6B6B;
+  --warning: #FFB020;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.06);
+  --shadow-fab: 0 8px 32px rgba(124,58,237,0.35);
+  --sidebar-w: 240px;
+}
+
+.dark {
+  --bg: #0B0B10;
+  --bg-elevated: #13131A;
+  --bg-muted: #1C1C27;
+  --bg-sidebar: #0F0F17;
+  --text: #F0F0FA;
+  --text-muted: #9CA3AF;
+  --text-subtle: #5C6278;
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.14);
+  --primary: #9D4EDD;
+  --primary-soft: rgba(157,78,221,0.18);
+  --primary-glow: rgba(157,78,221,0.35);
+  --accent: #6C8EF5;
+  --navy: #1A1F36;
+  --success: #00E096;
+  --danger: #FF6B7A;
+  --warning: #F5C842;
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.3);
+  --shadow-card: 0 8px 32px rgba(0,0,0,0.4);
+  --shadow-fab: 0 8px 32px rgba(157,78,221,0.4);
+  --sidebar-w: 240px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono, [data-money] { font-family: 'JetBrains Mono', monospace; }
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.3s ease-out both; }
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up 0.35s cubic-bezier(0.34,1.1,0.64,1) both; }
+
+@keyframes pulse-soft {
+  0%,100% { opacity:1; } 50% { opacity:0.55; }
+}
+.animate-pulse-soft { animation: pulse-soft 2s ease-in-out infinite; }
+
+@keyframes splash-logo {
+  0%   { transform: scale(0.8); opacity:0; }
+  60%  { transform: scale(1.06); }
+  100% { transform: scale(1);   opacity:1; }
+}
+.animate-splash { animation: splash-logo 0.8s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+/* Scrollbar */
+.scrollbar-none::-webkit-scrollbar { display:none; }
+.scrollbar-none { -ms-overflow-style:none; scrollbar-width:none; }
+
+::-webkit-scrollbar { width:6px; height:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border-strong); border-radius:3px; }
+
+/* Safe area */
+.safe-area-pb { padding-bottom: max(0.75rem, env(safe-area-inset-bottom)); }
+
+/* Card glow accent */
+.card-primary-glow { box-shadow: 0 0 0 1px var(--primary-soft), var(--shadow-card); }
+
+/* Sidebar layout helpers */
+.app-sidebar {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 50;
+  transition: transform 0.25s ease;
+}
+
+.sidebar-collapsed .app-sidebar {
+  transform: translateX(-100%);
+}
+
+.app-main {
+  min-height: 100vh;
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    margin-left: var(--sidebar-w);
+    transition: margin-left 0.25s ease;
+  }
+  .sidebar-collapsed .app-main {
+    margin-left: 0;
+  }
+}
+
+/* Glass effect for modals */
+.glass {
+  background: rgba(13,13,18,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.light .glass {
+  background: rgba(245,246,250,0.90);
+  backdrop-filter: blur(20px);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Money highlight */
+.money-positive { color: var(--success); }
+.money-negative { color: var(--danger); }

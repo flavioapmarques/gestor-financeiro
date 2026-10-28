@@ -104,19 +104,7 @@ body {
 
 /* Sidebar layout helpers */
 .app-sidebar {
-  position: fixed;
-  top: 0; left: 0; bottom: 0;
-  width: var(--sidebar-w);
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  z-index: 50;
-  transition: transform 0.25s ease;
-}
-
-.sidebar-collapsed .app-sidebar {
-  transform: translateX(-100%);
+  display: none;
 }
 
 .app-main {
@@ -124,6 +112,22 @@ body {
 }
 
 @media (min-width: 1024px) {
+  .app-sidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: var(--sidebar-w);
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+    transition: transform 0.25s ease;
+  }
+
+  .sidebar-collapsed .app-sidebar {
+    transform: translateX(-100%);
+  }
+
   .app-main {
     margin-left: var(--sidebar-w);
     transition: margin-left 0.25s ease;

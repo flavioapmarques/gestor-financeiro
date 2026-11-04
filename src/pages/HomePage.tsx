@@ -2,7 +2,7 @@ import { useState, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Bell, Search, TrendingUp, TrendingDown, CreditCard, Plus, BarChart2, Calendar, Sparkles, Tags, Landmark, ArrowRightLeft, ChevronRight, PiggyBank, Eye, EyeOff } from 'lucide-react'
+import { Bell, Search, TrendingUp, TrendingDown, CreditCard, Plus, BarChart2, Calendar, Sparkles, Tags, Landmark, ArrowRightLeft, ChevronRight, PiggyBank, Eye, EyeOff, Mic } from 'lucide-react'
 import { useBancos, useLancamentos, useLancamentosEfetivos, useCartoes, useEvolucaoMensal, useResumoDashboard, useMetas, useOrcamentos } from '../hooks/useData'
 import { useStore } from '../lib/store'
 import { formatBRL, formatBRLOuOculto, subtrairMeses } from '../lib/utils'
@@ -10,12 +10,14 @@ import { gerarNotificacoes, gerarResumoMensal } from '../lib/alertas'
 import { Card, SectionTitle } from '../ui/primitives'
 import { QuickAction, MoneyDisplay, TxIcon } from '../ui/finance'
 import { FormLancamentoModal } from '../components/lancamentos/FormLancamentoModal'
+import { ModalLancamentoVoz } from '../components/voz/ModalLancamentoVoz'
 
 const EvolucaoMensalCard = lazy(() => import('../components/home/EvolucaoMensalCard'))
 
 export function HomePage() {
   const navigate = useNavigate()
   const [modalAberto, setModalAberto] = useState(false)
+  const [modalVozAberto, setModalVozAberto] = useState(false)
   const [defaultTipo, setDefaultTipo] = useState<'receita' | 'despesa' | 'transferencia' | null>(null)
   const { filtroMes, filtroAno, valoresOcultos, toggleValoresOcultos } = useStore()
   const { data: bancos = [] } = useBancos()
@@ -66,6 +68,15 @@ export function HomePage() {
           <h1 className="text-xl font-bold tracking-tight mt-0.5">Visão geral</h1>
         </div>
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setModalVozAberto(true)}
+            aria-label="Lançar despesa por voz com IA"
+            title="Lançar despesa por voz com IA"
+            className="w-10 h-10 rounded-xl bg-[var(--primary-soft)] border border-[var(--primary)]/30 flex items-center justify-center text-[var(--primary)] hover:bg-[var(--primary)] hover:text-white transition-all shadow-sm"
+          >
+            <Mic size={17} />
+          </button>
           <button type="button" onClick={toggleValoresOcultos} aria-label={valoresOcultos ? 'Mostrar valores' : 'Ocultar valores'}
             className="w-10 h-10 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
             {valoresOcultos ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -327,6 +338,7 @@ export function HomePage() {
       </div>
 
       <FormLancamentoModal open={modalAberto} onClose={() => setModalAberto(false)} defaultTipo={defaultTipo} />
+      <ModalLancamentoVoz open={modalVozAberto} onClose={() => setModalVozAberto(false)} />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, Paperclip, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Paperclip, Loader2, ChevronDown, ChevronUp, Mic } from 'lucide-react'
 import type { Lancamento, TipoLancamento, Frequencia } from '../../lib/supabase'
 import { supabase } from '../../lib/supabase'
 import { useStore } from '../../lib/store'
@@ -7,6 +7,7 @@ import { useCategorias, useBancos, useCartoes, useAdicionarLancamento, useAtuali
 import { agruparCategorias } from '../../lib/categorias'
 import { agruparHistoricoPorEstabelecimento, buscarSugestoes } from '../../lib/autocompleteEstabelecimentos'
 import { mesFaturaCartao, mesVencimentoFatura } from '../../lib/lancamentos'
+import { ModalLancamentoVoz } from '../voz/ModalLancamentoVoz'
 
 interface Props {
   open: boolean
@@ -61,6 +62,7 @@ export function FormLancamentoModal({ open, onClose, defaultTipo = null, default
   const [frequencia, setFrequencia] = useState<Frequencia>('mensal')
   const [escopoEdicao, setEscopoEdicao] = useState<'apenas_esta' | 'esta_e_proximas' | 'todas'>('apenas_esta')
   const [erro, setErro] = useState('')
+  const [modalVozAberto, setModalVozAberto] = useState(false)
   const [comprovanteFile, setComprovanteFile] = useState<File | null>(null)
   const [comprovanteUrl, setComprovanteUrl] = useState<string | undefined>(undefined)
   const [enviandoComprovante, setEnviandoComprovante] = useState(false)
@@ -364,14 +366,25 @@ export function FormLancamentoModal({ open, onClose, defaultTipo = null, default
         {/* Top Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] sticky top-0 bg-[var(--bg-elevated)] z-10">
           <h2 className="text-base font-bold">{tituloModal}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="w-8 h-8 rounded-full bg-[var(--bg-muted)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setModalVozAberto(true)}
+              aria-label="Lançar por voz com IA"
+              title="Lançar por voz com IA"
+              className="w-8 h-8 rounded-full bg-[var(--primary-soft)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-white flex items-center justify-center transition-colors"
+            >
+              <Mic size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar"
+              className="w-8 h-8 rounded-full bg-[var(--bg-muted)] flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4 pb-8">
@@ -845,6 +858,14 @@ export function FormLancamentoModal({ open, onClose, defaultTipo = null, default
           </div>
         </form>
       </div>
+
+      <ModalLancamentoVoz
+        open={modalVozAberto}
+        onClose={() => {
+          setModalVozAberto(false)
+          onClose()
+        }}
+      />
     </div>
   )
 }

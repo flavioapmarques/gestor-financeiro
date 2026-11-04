@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { format, parseISO, isToday, isYesterday } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Pencil, Trash2, CreditCard, CircleCheck, Upload } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil, Trash2, CreditCard, CircleCheck, Upload, Mic } from 'lucide-react'
 
 import { useDeletarLancamento, useLancamentos, useBancos } from '../hooks/useData'
 import { isPagamentoFatura } from '../lib/lancamentos'
@@ -11,6 +11,7 @@ import { formatBRL, mesAnterior, proximoMes, nomeMes } from '../lib/utils'
 import type { Lancamento } from '../lib/supabase'
 import { FormLancamentoModal } from '../components/lancamentos/FormLancamentoModal'
 import { PagarLancamentoModal } from '../components/lancamentos/PagarLancamentoModal'
+import { ModalLancamentoVoz } from '../components/voz/ModalLancamentoVoz'
 import { TxIcon } from '../ui/finance'
 import { FAB, PageHeader } from '../ui/Screen'
 
@@ -137,6 +138,7 @@ export function Lancamentos() {
   const [filtro, setFiltro] = useState<FiltroTipo>('todos')
   const [filtroBanco, setFiltroBanco] = useState<string>('todos')
   const [modalAberto, setModalAberto] = useState(false)
+  const [modalVozAberto, setModalVozAberto] = useState(false)
   const [lancamentoSelecionado, setLancamentoSelecionado] = useState<Lancamento | null>(null)
   const [lancamentoAPagar, setLancamentoAPagar] = useState<Lancamento | null>(null)
 
@@ -188,6 +190,15 @@ export function Lancamentos() {
             <PageHeader title="Lançamentos"
               rightAction={
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalVozAberto(true)}
+                    aria-label="Lançar por voz com IA"
+                    title="Lançar por voz com IA"
+                    className="w-10 h-10 rounded-xl bg-[var(--primary-soft)] border border-[var(--primary)]/30 flex items-center justify-center text-[var(--primary)] hover:bg-[var(--primary)] hover:text-white transition-all flex-shrink-0 shadow-sm"
+                  >
+                    <Mic size={16} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => navigate('/importar-ofx')}
@@ -328,6 +339,11 @@ export function Lancamentos() {
           lancamento={lancamentoAPagar}
         />
       )}
+
+      <ModalLancamentoVoz
+        open={modalVozAberto}
+        onClose={() => setModalVozAberto(false)}
+      />
     </div>
   )
 }

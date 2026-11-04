@@ -3,8 +3,10 @@ import { Outlet, useLocation, NavLink, useNavigate } from 'react-router-dom'
 import {
   Home, Landmark, CreditCard, ArrowLeftRight, User,
   BarChart2, Wallet, TrendingUp, TrendingDown, ArrowRightLeft, X, ChevronLeft, ChevronRight,
+  Mic, Sparkles,
 } from 'lucide-react'
 import { FormLancamentoModal } from '../lancamentos/FormLancamentoModal'
+import { ModalLancamentoVoz } from '../voz/ModalLancamentoVoz'
 
 const NAV_ITEMS = [
   { to: '/',            icon: Home,           label: 'Início' },
@@ -22,7 +24,7 @@ const HIDE_NAV = [
   '/receitas', '/estados', '/metas/nova', '/orcamentos/novo', '/bancos/novo', '/importar-ofx',
 ]
 
-type TipoModal = 'receita' | 'despesa' | 'cartao' | 'transferencia' | null
+type TipoModal = 'receita' | 'despesa' | 'cartao' | 'transferencia' | 'voz' | null
 
 function FABMenu({ onSelect }: { onSelect: (tipo: TipoModal) => void }) {
   return (
@@ -30,6 +32,20 @@ function FABMenu({ onSelect }: { onSelect: (tipo: TipoModal) => void }) {
       <div className="fixed inset-0 z-40" onClick={() => onSelect(null)} aria-hidden />
       <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center animate-slide-up
                       lg:bottom-auto lg:top-auto lg:left-auto lg:translate-x-0 lg:static lg:flex-col">
+        {/* Opção Lançamento por Voz (IA) em destaque */}
+        <button
+          type="button"
+          onClick={() => onSelect('voz')}
+          className="flex items-center gap-2.5 px-5 py-3.5 rounded-2xl text-sm font-bold text-white shadow-xl w-52 justify-center transition-transform active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, var(--primary), var(--accent))',
+            boxShadow: '0 6px 24px rgba(124, 58, 237, 0.45)',
+          }}
+        >
+          <Mic size={18} className="animate-pulse" />
+          <span>Lançar por Voz (IA)</span>
+        </button>
+
         {[
           { tipo: 'receita'      as TipoModal, label: 'Receita',           color: 'var(--success)', glow: '#00E09644' },
           { tipo: 'despesa'      as TipoModal, label: 'Despesa',           color: 'var(--danger)',  glow: '#FF6B7A44' },
@@ -37,7 +53,7 @@ function FABMenu({ onSelect }: { onSelect: (tipo: TipoModal) => void }) {
           { tipo: 'transferencia'as TipoModal, label: 'Transferência',     color: 'var(--accent)',  glow: '#6C8EF544' },
         ].map(({ tipo, label, color, glow }) => (
           <button key={tipo} onClick={() => onSelect(tipo)}
-            className="flex items-center gap-3 px-5 py-3 rounded-2xl text-sm font-semibold text-white shadow-lg w-48 justify-center"
+            className="flex items-center gap-3 px-5 py-3 rounded-2xl text-sm font-semibold text-white shadow-lg w-52 justify-center"
             style={{ background: color, boxShadow: `0 4px 20px ${glow}` }}>
             {tipo==='receita' && <TrendingUp size={16}/>}
             {tipo==='despesa' && <TrendingDown size={16}/>}
@@ -56,6 +72,7 @@ export function AppShell() {
   const [fabOpen, setFabOpen] = useState(false)
   const [modalTipo, setModalTipo] = useState<TipoModal>(null)
   const [modalAberto, setModalAberto] = useState(false)
+  const [modalVozAberto, setModalVozAberto] = useState(false)
   const [sidebarColapsada, setSidebarColapsada] = useState(() => localStorage.getItem('sidebar-colapsada') === '1')
 
   function alternarSidebar() {
@@ -72,7 +89,12 @@ export function AppShell() {
 
   function handleSelect(tipo: TipoModal) {
     setFabOpen(false)
-    if (tipo) { setModalTipo(tipo); setModalAberto(true) }
+    if (tipo === 'voz') {
+      setModalVozAberto(true)
+    } else if (tipo) {
+      setModalTipo(tipo)
+      setModalAberto(true)
+    }
   }
 
   return (
@@ -107,6 +129,15 @@ export function AppShell() {
         <div className="px-3 pb-6 relative">
           {fabOpen && (
             <div className="mb-2 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => handleSelect('voz')}
+                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all active:scale-95"
+                style={{ background: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
+              >
+                <Mic size={14} className="animate-pulse" />
+                Lançar por Voz (IA)
+              </button>
               {([
                 { tipo: 'receita'      as TipoModal, label: 'Receita',           color: 'var(--success)' },
                 { tipo: 'despesa'      as TipoModal, label: 'Despesa',           color: 'var(--danger)' },
@@ -231,8 +262,13 @@ export function AppShell() {
       <FormLancamentoModal
         open={modalAberto}
         onClose={() => { setModalAberto(false); setModalTipo(null) }}
-        defaultTipo={modalTipo === 'cartao' ? 'despesa' : modalTipo}
+        defaultTipo={modalTipo === 'cartao' ? 'despesa' : modalTipo === 'voz' ? null : modalTipo}
         abrirNoCartao={modalTipo === 'cartao'}
+      />
+
+      <ModalLancamentoVoz
+        open={modalVozAberto}
+        onClose={() => setModalVozAberto(false)}
       />
     </div>
   )

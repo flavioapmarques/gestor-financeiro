@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { conciliarTransacaoOfx, type StatusConciliacao } from './conciliacaoOfx'
+import {
+  conciliarTransacaoOfx,
+  isStatusImportadoOuDuplicado,
+  filtrarConciliacoesVisiveis,
+  calcularResumoConciliacao,
+  type StatusConciliacao,
+  type ResultadoConciliacao,
+} from './conciliacaoOfx'
 import type { Lancamento } from './supabase'
 import type { TransacaoOfx } from './ofx'
 
@@ -72,5 +79,47 @@ describe('conciliação OFX', () => {
 
     expect(resultado.status).toBe('duplicidade')
     expect(resultado.candidatos).toHaveLength(2)
+  })
+
+  it('identifica corretamente status importado ou duplicado', () => {
+    expect(isStatusImportadoOuDuplicado('ja_lancado')).toBe(true)
+    expect(isStatusImportadoOuDuplicado('duplicidade')).toBe(true)
+    expect(isStatusImportadoOuDuplicado('nao_lancado')).toBe(false)
+    expect(isStatusImportadoOuDuplicado('possivel')).toBe(false)
+  })
+
+  it('filtra conciliações visíveis quando opção ocultar estiver ativa', () => {
+    const lista: ResultadoConciliacao[] = [
+      { transacao: transacao({ fitid: '1' }), status: 'ja_lancado', score: 100, candidato: null, candidatos: [] },
+      { transacao: transacao({ fitid: '2' }), status: 'nao_lancado', score: 0, candidato: null, candidatos: [] },
+      { transacao: transacao({ fitid: '3' }), status: 'possivel', score: 70, candidato: null, candidatos: [] },
+      { transacao: transacao({ fitid: '4' }), status: 'duplicidade', score: 100, candidato: null, candidatos: [] },
+    ]
+
+    // Quando desmarcado (false), retorna todos os 4
+    expect(filtrarConciliacoesVisiveis(lista, false)).toHaveLength(4)
+
+    // Quando marcado (true), oculta 'ja_lancado' e 'duplicidade', mantendo 2
+    const visiveis = filtrarConciliacoesVisiveis(lista, true)
+    expect(visiveis).toHaveLength(2)
+    expect(visiveis.map(v => v.transacao.fitid)).toEqual(['2', '3'])
+  })
+
+  it('calcula o resumo de quantidades corretamente', () => {
+    const lista: ResultadoConciliacao[] = [
+      { transacao: transacao({ fitid: '1' }), status: 'ja_lancado', score: 100, candidato: null, candidatos: [] },
+      { transacao: transacao({ fitid: '2' }), status: 'nao_lancado', score: 0, candidato: null, candidatos: [] },
+      { transacao: transacao({ fitid: '3' }), status: 'nao_lancado', score: 0, candidato: null, candidatos: [] },
+      { transacao: transacao({ fitid: '4' }), status: 'possivel', score: 70, candidato: null, candidatos: [] },
+      { transacao: transacao({ fitid: '5' }), status: 'duplicidade', score: 100, candidato: null, candidatos: [] },
+    ]
+
+    const resumo = calcularResumoConciliacao(lista)
+    expect(resumo.total).toBe(5)
+    expect(resumo.jaLancados).toBe(1)
+    expect(resumo.duplicidades).toBe(1)
+    expect(resumo.possiveis).toBe(1)
+    expect(resumo.naoLancados).toBe(2)
+    expect(resumo.totalImportadosOuDuplicados).toBe(2)
   })
 })

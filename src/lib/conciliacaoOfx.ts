@@ -139,3 +139,47 @@ export function conciliarExtratoOfx(
 ): ResultadoConciliacao[] {
   return transacoes.map(transacao => conciliarTransacaoOfx(transacao, lancamentos, config))
 }
+
+/**
+ * Retorna se o status da conciliação indica que o lançamento já foi importado ou é duplicidade.
+ */
+export function isStatusImportadoOuDuplicado(status: StatusConciliacao): boolean {
+  return status === 'ja_lancado' || status === 'duplicidade'
+}
+
+/**
+ * Filtra as conciliações para visualização respeitando a opção de ocultar importados.
+ */
+export function filtrarConciliacoesVisiveis(
+  conciliacoes: ResultadoConciliacao[],
+  ocultarJaImportados: boolean
+): ResultadoConciliacao[] {
+  if (!ocultarJaImportados) return conciliacoes
+  return conciliacoes.filter(item => !isStatusImportadoOuDuplicado(item.status))
+}
+
+/**
+ * Calcula o resumo de quantidades das conciliações OFX.
+ */
+export function calcularResumoConciliacao(conciliacoes: ResultadoConciliacao[]) {
+  let jaLancados = 0
+  let duplicidades = 0
+  let possiveis = 0
+  let naoLancados = 0
+
+  for (const c of conciliacoes) {
+    if (c.status === 'ja_lancado') jaLancados++
+    else if (c.status === 'duplicidade') duplicidades++
+    else if (c.status === 'possivel') possiveis++
+    else if (c.status === 'nao_lancado') naoLancados++
+  }
+
+  return {
+    total: conciliacoes.length,
+    jaLancados,
+    duplicidades,
+    possiveis,
+    naoLancados,
+    totalImportadosOuDuplicados: jaLancados + duplicidades,
+  }
+}

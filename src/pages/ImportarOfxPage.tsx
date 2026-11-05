@@ -1,9 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, FileText, CheckCircle2, Landmark, CreditCard } from 'lucide-react'
-import { useBancos, useCartoes, useCategorias, useHistoricoDescricoes, useHistoricoImportacoesOfx, useImportarOfx, useLancamentosParaConciliacao, useVincularLancamentoOfx } from '../hooks/useData'
+import {
+  Upload,
+  FileText,
+  CheckCircle2,
+  Landmark,
+  CreditCard,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
+import {
+  useBancos,
+  useCartoes,
+  useCategorias,
+  useHistoricoDescricoes,
+  useHistoricoImportacoesOfx,
+  useImportarOfx,
+  useLancamentosParaConciliacao,
+  useVincularLancamentoOfx,
+} from '../hooks/useData'
 import { parseOfx, type ExtratoOfx } from '../lib/ofx'
-import { conciliarExtratoOfx, type ResultadoConciliacao, type StatusConciliacao } from '../lib/conciliacaoOfx'
+import {
+  conciliarExtratoOfx,
+  type ResultadoConciliacao,
+  type StatusConciliacao,
+  filtrarConciliacoesVisiveis,
+  calcularResumoConciliacao,
+  isStatusImportadoOuDuplicado,
+} from '../lib/conciliacaoOfx'
 import { agruparHistoricoPorEstabelecimento, sugerirCategoriaPorDescricao } from '../lib/autocompleteEstabelecimentos'
 import { formatBRL } from '../lib/utils'
 import { Screen } from '../ui/Screen'
@@ -32,6 +56,7 @@ export function ImportarOfxPage() {
   const [extrato, setExtrato] = useState<ExtratoOfx | null>(null)
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
   const [selecaoInicializada, setSelecaoInicializada] = useState(false)
+  const [ocultarJaImportados, setOcultarJaImportados] = useState(false)
   const [categoriaPorFitid, setCategoriaPorFitid] = useState<Record<string, string>>({})
   const [observacaoPorFitid, setObservacaoPorFitid] = useState<Record<string, string>>({})
   const [descricaoPorFitid, setDescricaoPorFitid] = useState<Record<string, string>>({})
@@ -42,6 +67,13 @@ export function ImportarOfxPage() {
   const conciliacoes = useMemo(
     () => extrato ? conciliarExtratoOfx(extrato.transacoes, lancamentosConciliacao) : [],
     [extrato, lancamentosConciliacao],
+  )
+
+  const resumo = useMemo(() => calcularResumoConciliacao(conciliacoes), [conciliacoes])
+
+  const conciliacoesVisiveis = useMemo(
+    () => filtrarConciliacoesVisiveis(conciliacoes, ocultarJaImportados),
+    [conciliacoes, ocultarJaImportados],
   )
 
   const indiceDespesas = useMemo(() => agruparHistoricoPorEstabelecimento(historico, 'despesa'), [historico])
@@ -81,6 +113,7 @@ export function ImportarOfxPage() {
       setArquivoNome(file.name)
       setSelecionadas(new Set())
       setSelecaoInicializada(false)
+      setOcultarJaImportados(false)
       setCategoriaPorFitid(sugestoes)
       setObservacaoPorFitid({})
       setDescricaoPorFitid(descricoesIniciais)
@@ -102,12 +135,26 @@ export function ImportarOfxPage() {
   }, [conciliacoes, carregandoConciliacao, extrato, selecaoInicializada])
 
   function alternarSelecao(fitid: string) {
+    const item = conciliacoes.find(c => c.transacao.fitid === fitid)
+    if (item && isStatusImportadoOuDuplicado(item.status)) return
+
     setSelecionadas(prev => {
       const novo = new Set(prev)
       if (novo.has(fitid)) novo.delete(fitid)
       else novo.add(fitid)
       return novo
     })
+  }
+
+  function selecionarTodasNovas() {
+    const permitidas = conciliacoes
+      .filter(item => !isStatusImportadoOuDuplicado(item.status))
+      .map(item => item.transacao.fitid)
+    setSelecionadas(new Set(permitidas))
+  }
+
+  function desmarcarTodas() {
+    setSelecionadas(new Set())
   }
 
   async function confirmarImportacao() {
@@ -255,37 +302,136 @@ export function ImportarOfxPage() {
 
       {etapa === 'preview' && extrato && (
         <div className="space-y-4">
-          <Card className="flex items-center gap-3">
-            <FileText className="text-[var(--primary)]" size={22} />
-            <div>
-              <p className="text-sm font-semibold">{extrato.transacoes.length} transações encontradas</p>
-              <p className="text-xs text-[var(--text-muted)]">
-                {selecionadas.size} selecionadas
-                {conciliacoes.filter(item => item.status === 'ja_lancado').length > 0 && ` · ${conciliacoes.filter(item => item.status === 'ja_lancado').length} já lançadas`}
-              </p>
+          <Card className="space-y-3">
+            <div className="flex items-center gap-3">
+              <FileText className="text-[var(--primary)]" size={24} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold truncate">{arquivoNome || 'Extrato OFX'}</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {resumo.total} transações no arquivo · {selecionadas.size} selecionada{selecionadas.size !== 1 ? 's' : ''} para importar
+                </p>
+              </div>
+            </div>
+
+            {/* Badges de resumo e status */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-[var(--border)]">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[var(--bg-muted)] text-[var(--text)] font-semibold text-[11px]">
+                Total: <span>{resumo.total}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 font-semibold text-[11px]">
+                Novas: <span>{resumo.naoLancados}</span>
+              </span>
+              {resumo.jaLancados > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400 font-semibold text-[11px]">
+                  Já lançadas: <span>{resumo.jaLancados}</span>
+                </span>
+              )}
+              {resumo.duplicidades > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/15 text-rose-400 font-semibold text-[11px]">
+                  Duplicidades: <span>{resumo.duplicidades}</span>
+                </span>
+              )}
+              {resumo.possiveis > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 font-semibold text-[11px]">
+                  Possíveis: <span>{resumo.possiveis}</span>
+                </span>
+              )}
             </div>
           </Card>
 
-          {carregandoConciliacao && <p className="text-sm text-[var(--text-muted)] text-center">Comparando com seus lançamentos...</p>}
+          {/* Barra de controle de visualização e seleção rápida */}
+          <Card padding="sm" className="space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs sm:text-sm font-medium text-[var(--text)]">
+                <input
+                  type="checkbox"
+                  checked={ocultarJaImportados}
+                  onChange={e => setOcultarJaImportados(e.target.checked)}
+                  className="w-4 h-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)] accent-[var(--primary)] cursor-pointer"
+                />
+                <span className="flex items-center gap-1.5">
+                  {ocultarJaImportados ? (
+                    <EyeOff size={15} className="text-[var(--primary)]" />
+                  ) : (
+                    <Eye size={15} className="text-[var(--text-muted)]" />
+                  )}
+                  Ocultar lançamentos já importados
+                </span>
+                {resumo.totalImportadosOuDuplicados > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--bg-muted)] text-[var(--text-muted)] font-mono font-semibold">
+                    {resumo.totalImportadosOuDuplicados}
+                  </span>
+                )}
+              </label>
 
-          <div className="space-y-2">
-            {conciliacoes.map(item => (
-              <LinhaTransacao
-                key={item.transacao.fitid}
-                conciliacao={item}
-                selecionada={selecionadas.has(item.transacao.fitid)}
-                descricao={descricaoPorFitid[item.transacao.fitid] ?? item.transacao.descricao}
-                categoriaId={categoriaPorFitid[item.transacao.fitid] ?? ''}
-                observacao={observacaoPorFitid[item.transacao.fitid] ?? ''}
-                categorias={item.transacao.tipo === 'despesa' ? categoriasDespesa : categoriasReceita}
-                onToggle={() => alternarSelecao(item.transacao.fitid)}
-                onDescricaoChange={desc => setDescricaoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: desc }))}
-                onCategoriaChange={catId => setCategoriaPorFitid(prev => ({ ...prev, [item.transacao.fitid]: catId }))}
-                onObservacaoChange={obs => setObservacaoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: obs }))}
-                onVincular={() => void vincularExistente(item)}
-              />
-            ))}
-          </div>
+              <div className="flex items-center gap-1.5 text-xs">
+                <button
+                  type="button"
+                  onClick={selecionarTodasNovas}
+                  className="text-[11px] font-semibold text-[var(--primary)] hover:underline px-2 py-1 rounded transition-colors"
+                >
+                  Selecionar novas ({resumo.naoLancados})
+                </button>
+                <span className="text-[var(--border)]">|</span>
+                <button
+                  type="button"
+                  onClick={desmarcarTodas}
+                  className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] px-2 py-1 rounded transition-colors"
+                >
+                  Desmarcar todas
+                </button>
+              </div>
+            </div>
+
+            {ocultarJaImportados && resumo.totalImportadosOuDuplicados > 0 && (
+              <p className="text-[11px] text-[var(--text-muted)] flex items-center gap-1 pt-1 border-t border-[var(--border)]/50">
+                <EyeOff size={12} className="text-[var(--primary)] flex-shrink-0" />
+                Ocultando {resumo.totalImportadosOuDuplicados} lançamento{resumo.totalImportadosOuDuplicados > 1 ? 's' : ''} já processado{resumo.totalImportadosOuDuplicados > 1 ? 's' : ''} ou em duplicidade.
+              </p>
+            )}
+          </Card>
+
+          {carregandoConciliacao && (
+            <p className="text-sm text-[var(--text-muted)] text-center py-2">
+              Comparando com seus lançamentos...
+            </p>
+          )}
+
+          {conciliacoesVisiveis.length === 0 ? (
+            <Card className="text-center py-8 px-4 space-y-3">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg-muted)] flex items-center justify-center mx-auto text-[var(--text-muted)]">
+                <EyeOff size={20} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-[var(--text)]">Nenhum lançamento visível</p>
+                <p className="text-xs text-[var(--text-muted)] max-w-sm mx-auto">
+                  Todos os {resumo.total} lançamentos deste arquivo já foram identificados como já lançados ou duplicidades e estão ocultos pelo filtro ativo.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => setOcultarJaImportados(false)}>
+                Exibir todos os lançamentos
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-2">
+              {conciliacoesVisiveis.map(item => (
+                <LinhaTransacao
+                  key={item.transacao.fitid}
+                  conciliacao={item}
+                  selecionada={selecionadas.has(item.transacao.fitid)}
+                  descricao={descricaoPorFitid[item.transacao.fitid] ?? item.transacao.descricao}
+                  categoriaId={categoriaPorFitid[item.transacao.fitid] ?? ''}
+                  observacao={observacaoPorFitid[item.transacao.fitid] ?? ''}
+                  categorias={item.transacao.tipo === 'despesa' ? categoriasDespesa : categoriasReceita}
+                  onToggle={() => alternarSelecao(item.transacao.fitid)}
+                  onDescricaoChange={desc => setDescricaoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: desc }))}
+                  onCategoriaChange={catId => setCategoriaPorFitid(prev => ({ ...prev, [item.transacao.fitid]: catId }))}
+                  onObservacaoChange={obs => setObservacaoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: obs }))}
+                  onVincular={() => void vincularExistente(item)}
+                />
+              ))}
+            </div>
+          )}
 
           {erro && <p className="text-sm text-[var(--danger)] px-1">{erro}</p>}
 
@@ -336,7 +482,7 @@ function LinhaTransacao({
   onVincular: () => void
 }) {
   const { transacao, candidato, status, score } = conciliacao
-  const bloqueada = status === 'ja_lancado' || status === 'duplicidade'
+  const bloqueada = isStatusImportadoOuDuplicado(status)
   const statusConfig: Record<StatusConciliacao, { label: string; variant: 'success' | 'warning' | 'danger' | 'default' }> = {
     ja_lancado: { label: 'Já lançado', variant: 'success' },
     possivel: { label: 'Possível correspondência', variant: 'warning' },
@@ -363,11 +509,12 @@ function LinhaTransacao({
   }, [categorias])
 
   return (
-    <Card padding="md" className={bloqueada ? 'border-[var(--border)]' : undefined}>
+    <Card padding="md" className={bloqueada ? 'border-[var(--border)] opacity-85' : undefined}>
       <div className="flex items-start gap-3">
         <button type="button" onClick={bloqueada ? undefined : onToggle} disabled={bloqueada}
           aria-label={selecionada ? 'Remover da importação' : 'Incluir na importação'}
           className={`mt-1 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+            bloqueada ? 'border-[var(--border)] bg-[var(--bg-muted)] opacity-50 cursor-not-allowed' :
             selecionada ? 'bg-[var(--primary)] border-[var(--primary)]' : 'border-[var(--border)]'
           }`}>
           {selecionada && <CheckCircle2 size={14} className="text-white" />}
@@ -380,8 +527,8 @@ function LinhaTransacao({
               {transacao.tipo === 'receita' ? '+' : '-'}{formatBRL(transacao.valor)}
             </p>
           </div>
-          <p className="text-[11px] text-[var(--text-muted)] mb-1.5">
-            {new Date(`${transacao.data}T12:00:00`).toLocaleDateString('pt-BR')}
+          <p className="text-[11px] text-[var(--text-muted)] mb-1.5 flex items-center gap-1.5 flex-wrap">
+            <span>{new Date(`${transacao.data}T12:00:00`).toLocaleDateString('pt-BR')}</span>
             <Badge variant={config.variant}>{config.label} · {score} pts</Badge>
           </p>
 
@@ -463,5 +610,3 @@ function LinhaTransacao({
     </Card>
   )
 }
-
-

@@ -117,7 +117,7 @@ export function ConfiguracoesPage() {
         </div>
       )}
 
-      <p className="text-center text-[10px] text-[var(--text-subtle)] mt-8">Gestor Financeiro v1.0.0</p>
+      <p className="text-center text-[10px] text-[var(--text-subtle)] mt-8">FMIT - Gestor Financeiro v1.0.0</p>
     </Screen>
   )
 }

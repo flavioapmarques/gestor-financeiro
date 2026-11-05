@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Gestor Financeiro',
-        short_name: 'Finanças',
-        description: 'Seu gestor financeiro pessoal',
+        name: 'FMIT - Gestor Financeiro',
+        short_name: 'FMIT Gestor',
+        description: 'FMIT - Seu gestor financeiro pessoal inteligente',
         theme_color: '#0f1117',
         background_color: '#0f1117',
         display: 'standalone',

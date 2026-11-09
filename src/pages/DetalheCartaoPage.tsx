@@ -8,6 +8,7 @@ import { CreditCardVisual, ProgressBar, TxIcon } from '../ui/finance'
 import { Button, Card, SectionTitle, Badge } from '../ui/primitives'
 import { FormLancamentoModal } from '../components/lancamentos/FormLancamentoModal'
 import { ConfirmarExclusaoCartaoModal } from '../components/cartoes/ConfirmarExclusaoCartaoModal'
+import { HistoricoParcelamentoModal } from '../components/cartoes/HistoricoParcelamentoModal'
 import type { Lancamento } from '../lib/supabase'
 
 
@@ -95,6 +96,7 @@ export function DetalheCartaoPage() {
   const [lancamentoSelecionado, setLancamentoSelecionado] = useState<Lancamento | null>(null)
   const [excluindo, setExcluindo] = useState<Lancamento | null>(null)
   const [modalExcluirCartaoAberto, setModalExcluirCartaoAberto] = useState(false)
+  const [grupoHistoricoId, setGrupoHistoricoId] = useState<string | null>(null)
 
   if (!cartao) return (
     <div className="min-h-full bg-[var(--bg)] flex flex-col items-center justify-center gap-4 p-8">
@@ -243,7 +245,23 @@ export function DetalheCartaoPage() {
                     <p className="text-sm font-semibold truncate">{l.descricao}</p>
                     <p className="text-[11px] text-[var(--text-muted)]">
                       {l.data_vencimento_parcela ?? l.data}
-                      {l.parcelado && ` · ${l.parcela_atual}/${l.total_parcelas}x`}
+                      {l.parcelado && (
+                        l.grupo_parcela_id ? (
+                          <>
+                            {' · '}
+                            <button
+                              type="button"
+                              onClick={() => setGrupoHistoricoId(l.grupo_parcela_id!)}
+                              className="font-bold text-[var(--primary)] hover:underline"
+                              title="Ver histórico completo das parcelas"
+                            >
+                              {l.parcela_atual}/{l.total_parcelas}x
+                            </button>
+                          </>
+                        ) : (
+                          ` · ${l.parcela_atual}/${l.total_parcelas}x`
+                        )
+                      )}
                       {l.categoria && ` · ${l.categoria.nome}`}
                     </p>
                   </div>
@@ -300,6 +318,12 @@ export function DetalheCartaoPage() {
           onSuccess={() => navigate('/cartoes')}
         />
       )}
+
+      <HistoricoParcelamentoModal
+        open={!!grupoHistoricoId}
+        onClose={() => setGrupoHistoricoId(null)}
+        grupoParcelaId={grupoHistoricoId}
+      />
     </div>
   )
 }

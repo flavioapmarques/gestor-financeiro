@@ -8,6 +8,8 @@ import {
   CreditCard,
   Eye,
   EyeOff,
+  Clock,
+  Layers,
 } from 'lucide-react'
 import {
   useBancos,
@@ -28,11 +30,16 @@ import {
   calcularResumoConciliacao,
   isStatusImportadoOuDuplicado,
 } from '../lib/conciliacaoOfx'
+import {
+  extrairDadosParcelamentoDescricao,
+  calcularDatasCartao,
+} from '../lib/parcelamentoOfx'
 import { agruparHistoricoPorEstabelecimento, sugerirCategoriaPorDescricao } from '../lib/autocompleteEstabelecimentos'
 import { formatBRL } from '../lib/utils'
 import { Screen } from '../ui/Screen'
 import { Card, Button, Badge } from '../ui/primitives'
 import { TxIcon } from '../ui/finance'
+import { HistoricoParcelamentoModal } from '../components/cartoes/HistoricoParcelamentoModal'
 
 type Etapa = 'destino' | 'preview' | 'concluido'
 
@@ -57,9 +64,24 @@ export function ImportarOfxPage() {
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
   const [selecaoInicializada, setSelecaoInicializada] = useState(false)
   const [ocultarJaImportados, setOcultarJaImportados] = useState(false)
+
+  // Mapeamentos por transação (FITID)
   const [categoriaPorFitid, setCategoriaPorFitid] = useState<Record<string, string>>({})
   const [observacaoPorFitid, setObservacaoPorFitid] = useState<Record<string, string>>({})
   const [descricaoPorFitid, setDescricaoPorFitid] = useState<Record<string, string>>({})
+
+  // Datas diferenciadas (Data da compra x Data de cobrança na fatura)
+  const [dataCompraPorFitid, setDataCompraPorFitid] = useState<Record<string, string>>({})
+  const [dataVencimentoPorFitid, setDataVencimentoPorFitid] = useState<Record<string, string>>({})
+
+  // Parcelamento
+  const [parceladoPorFitid, setParceladoPorFitid] = useState<Record<string, boolean>>({})
+  const [parcelaAtualPorFitid, setParcelaAtualPorFitid] = useState<Record<string, number>>({})
+  const [totalParcelasPorFitid, setTotalParcelasPorFitid] = useState<Record<string, number>>({})
+  const [gerarFuturasPorFitid, setGerarFuturasPorFitid] = useState<Record<string, boolean>>({})
+
+  // Modal para ver histórico de parcelamento existente
+  const [grupoModalId, setGrupoModalId] = useState<string | null>(null)
   const [resultado, setResultado] = useState<{ inseridos: number } | null>(null)
 
   const destino = destinoId ? { tipo: destinoTipo, id: destinoId } : null
@@ -102,11 +124,53 @@ export function ImportarOfxPage() {
       // Sugere categoria automaticamente com base no histórico de lançamentos do usuário
       const sugestoes: Record<string, string> = {}
       const descricoesIniciais: Record<string, string> = {}
+      const datasCompraIniciais: Record<string, string> = {}
+      const datasVencimentoIniciais: Record<string, string> = {}
+      const parceladosIniciais: Record<string, boolean> = {}
+      const parcelaAtualIniciais: Record<string, number> = {}
+      const totalParcelasIniciais: Record<string, number> = {}
+      const gerarFuturasIniciais: Record<string, boolean> = {}
+
       for (const t of resultadoParse.transacoes) {
         const indice = t.tipo === 'despesa' ? indiceDespesas : indiceReceitas
         const cat = sugerirCategoriaPorDescricao(indice, t.descricao)
         if (cat) sugestoes[t.fitid] = cat.id
-        descricoesIniciais[t.fitid] = t.descricao
+
+        // Identifica parcelamento e data da compra a partir da descrição e metadados
+        const dadosParcela = extrairDadosParcelamentoDescricao(t.descricao)
+
+        descricoesIniciais[t.fitid] = dadosParcela.descricaoBase || t.descricao
+
+        // 1. Data original da compra:
+        // Prefere DTUSER do OFX, ou data identificada na descrição (ex: 28/10), ou a data da transação
+        const dataCompraOriginal = t.dataCompra || dadosParcela.dataCompraDetectada || t.data
+        datasCompraIniciais[t.fitid] = dataCompraOriginal
+
+        // 2. Data de cobrança / vencimento da fatura:
+        if (destinoTipo === 'cartao' && cartaoSelecionado && cartaoSelecionado.dia_fechamento && cartaoSelecionado.dia_vencimento) {
+          const datasCalculadas = calcularDatasCartao(
+            dataCompraOriginal,
+            cartaoSelecionado.dia_fechamento,
+            cartaoSelecionado.dia_vencimento,
+          )
+          datasVencimentoIniciais[t.fitid] = datasCalculadas.dataVencimentoParcela
+        } else {
+          datasVencimentoIniciais[t.fitid] = t.data
+        }
+
+        // 3. Parcelamento
+        if (dadosParcela.parcelado && dadosParcela.parcelaAtual && dadosParcela.totalParcelas) {
+          parceladosIniciais[t.fitid] = true
+          parcelaAtualIniciais[t.fitid] = dadosParcela.parcelaAtual
+          totalParcelasIniciais[t.fitid] = dadosParcela.totalParcelas
+        } else {
+          parceladosIniciais[t.fitid] = false
+          parcelaAtualIniciais[t.fitid] = 1
+          totalParcelasIniciais[t.fitid] = 1
+        }
+
+        // Importante: gerar parcelas futuras vem DESMARCADO por padrão (requer confirmação explícita do usuário)
+        gerarFuturasIniciais[t.fitid] = false
       }
 
       setExtrato(resultadoParse)
@@ -117,6 +181,12 @@ export function ImportarOfxPage() {
       setCategoriaPorFitid(sugestoes)
       setObservacaoPorFitid({})
       setDescricaoPorFitid(descricoesIniciais)
+      setDataCompraPorFitid(datasCompraIniciais)
+      setDataVencimentoPorFitid(datasVencimentoIniciais)
+      setParceladoPorFitid(parceladosIniciais)
+      setParcelaAtualPorFitid(parcelaAtualIniciais)
+      setTotalParcelasPorFitid(totalParcelasIniciais)
+      setGerarFuturasPorFitid(gerarFuturasIniciais)
       setEtapa('preview')
     } catch {
       setErro('Não consegui ler esse arquivo. Confira se ele não está corrompido.')
@@ -129,7 +199,7 @@ export function ImportarOfxPage() {
   useEffect(() => {
     if (!extrato || carregandoConciliacao || conciliacoes.length === 0 || selecaoInicializada) return
     setSelecionadas(new Set(conciliacoes
-      .filter(item => item.status === 'nao_lancado')
+      .filter(item => item.status === 'nao_lancado' || (item.candidato?.isParcelaCorrespondente && !item.candidato.lancamento.efetivado))
       .map(item => item.transacao.fitid)))
     setSelecaoInicializada(true)
   }, [conciliacoes, carregandoConciliacao, extrato, selecaoInicializada])
@@ -157,17 +227,48 @@ export function ImportarOfxPage() {
     setSelecionadas(new Set())
   }
 
+  function handleDataCompraChange(fitid: string, novaDataCompra: string) {
+    setDataCompraPorFitid(prev => ({ ...prev, [fitid]: novaDataCompra }))
+
+    // Se for cartão, recalcula automaticamente a sugestão da data de vencimento da fatura
+    if (destinoTipo === 'cartao' && cartaoSelecionado && cartaoSelecionado.dia_fechamento && cartaoSelecionado.dia_vencimento) {
+      const datas = calcularDatasCartao(novaDataCompra, cartaoSelecionado.dia_fechamento, cartaoSelecionado.dia_vencimento)
+      setDataVencimentoPorFitid(prev => ({ ...prev, [fitid]: datas.dataVencimentoParcela }))
+    }
+  }
+
   async function confirmarImportacao() {
     if (!extrato) return
     setErro('')
+
+    // Mapeia transações selecionadas com dados refinados pelo usuário
     const transacoes = extrato.transacoes
       .filter(t => selecionadas.has(t.fitid))
-      .map(t => ({
-        ...t,
-        descricao: (descricaoPorFitid[t.fitid] ?? t.descricao).trim() || t.descricao,
-        categoria_id: categoriaPorFitid[t.fitid],
-        observacao: observacaoPorFitid[t.fitid]?.trim() || undefined,
-      }))
+      .map(t => {
+        const itemConciliacao = conciliacoes.find(c => c.transacao.fitid === t.fitid)
+        const isParcelaCorrespondente = itemConciliacao?.candidato?.isParcelaCorrespondente && !itemConciliacao.candidato.lancamento.efetivado
+
+        const isParcelado = parceladoPorFitid[t.fitid] ?? false
+        const parcelaAtual = parcelaAtualPorFitid[t.fitid] ?? 1
+        const totalParcelas = totalParcelasPorFitid[t.fitid] ?? 1
+
+        return {
+          ...t,
+          data: dataCompraPorFitid[t.fitid] || t.data, // Data da compra
+          dataVencimentoParcela: dataVencimentoPorFitid[t.fitid], // Data de cobrança
+          descricao: (descricaoPorFitid[t.fitid] ?? t.descricao).trim() || t.descricao,
+          categoria_id: categoriaPorFitid[t.fitid],
+          observacao: observacaoPorFitid[t.fitid]?.trim() || undefined,
+          parcelado: isParcelado,
+          parcelaAtual: isParcelado ? parcelaAtual : undefined,
+          totalParcelas: isParcelado ? totalParcelas : undefined,
+          gerarParcelasFuturas: isParcelado ? (gerarFuturasPorFitid[t.fitid] ?? false) : false,
+          // Se encontrou uma parcela futura preexistente prevista, vincula o ID para atualizar em vez de duplicar
+          atualizarLancamentoId: isParcelaCorrespondente ? itemConciliacao?.candidato?.lancamento.id : undefined,
+          grupoParcelaId: isParcelaCorrespondente ? itemConciliacao?.candidato?.lancamento.grupo_parcela_id : undefined,
+        }
+      })
+
     try {
       const res = await importar.mutateAsync({
         transacoes,
@@ -418,15 +519,31 @@ export function ImportarOfxPage() {
                 <LinhaTransacao
                   key={item.transacao.fitid}
                   conciliacao={item}
+                  isCartao={destinoTipo === 'cartao'}
+                  diaFechamento={cartaoSelecionado?.dia_fechamento}
+                  diaVencimento={cartaoSelecionado?.dia_vencimento}
                   selecionada={selecionadas.has(item.transacao.fitid)}
                   descricao={descricaoPorFitid[item.transacao.fitid] ?? item.transacao.descricao}
                   categoriaId={categoriaPorFitid[item.transacao.fitid] ?? ''}
                   observacao={observacaoPorFitid[item.transacao.fitid] ?? ''}
+                  dataCompra={dataCompraPorFitid[item.transacao.fitid] || item.transacao.data}
+                  dataVencimento={dataVencimentoPorFitid[item.transacao.fitid] || item.transacao.data}
+                  parcelado={parceladoPorFitid[item.transacao.fitid] ?? false}
+                  parcelaAtual={parcelaAtualPorFitid[item.transacao.fitid] ?? 1}
+                  totalParcelas={totalParcelasPorFitid[item.transacao.fitid] ?? 1}
+                  gerarFuturas={gerarFuturasPorFitid[item.transacao.fitid] ?? false}
                   categorias={item.transacao.tipo === 'despesa' ? categoriasDespesa : categoriasReceita}
                   onToggle={() => alternarSelecao(item.transacao.fitid)}
                   onDescricaoChange={desc => setDescricaoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: desc }))}
                   onCategoriaChange={catId => setCategoriaPorFitid(prev => ({ ...prev, [item.transacao.fitid]: catId }))}
                   onObservacaoChange={obs => setObservacaoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: obs }))}
+                  onDataCompraChange={dc => handleDataCompraChange(item.transacao.fitid, dc)}
+                  onDataVencimentoChange={dv => setDataVencimentoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: dv }))}
+                  onParceladoChange={p => setParceladoPorFitid(prev => ({ ...prev, [item.transacao.fitid]: p }))}
+                  onParcelaAtualChange={pa => setParcelaAtualPorFitid(prev => ({ ...prev, [item.transacao.fitid]: pa }))}
+                  onTotalParcelasChange={tp => setTotalParcelasPorFitid(prev => ({ ...prev, [item.transacao.fitid]: tp }))}
+                  onGerarFuturasChange={gf => setGerarFuturasPorFitid(prev => ({ ...prev, [item.transacao.fitid]: gf }))}
+                  onAbrirHistoricoParcelamento={gid => setGrupoModalId(gid)}
                   onVincular={() => void vincularExistente(item)}
                 />
               ))}
@@ -455,41 +572,101 @@ export function ImportarOfxPage() {
         <Card className="flex flex-col items-center text-center py-10 gap-3">
           <CheckCircle2 size={40} className="text-[var(--success)]" />
           <p className="font-bold text-lg">Importação concluída!</p>
-          <p className="text-sm text-[var(--text-muted)]">{resultado.inseridos} lançamento{resultado.inseridos !== 1 ? 's' : ''} adicionado{resultado.inseridos !== 1 ? 's' : ''} com sucesso.</p>
+          <p className="text-sm text-[var(--text-muted)]">{resultado.inseridos} lançamento{resultado.inseridos !== 1 ? 's' : ''} processado{resultado.inseridos !== 1 ? 's' : ''} com sucesso.</p>
           <div className="flex gap-2 mt-2">
             <Button variant="outline" onClick={() => { setEtapa('destino'); setExtrato(null); setArquivoNome(''); setDestinoId('') }}>Importar outro arquivo</Button>
             <Button onClick={() => navigate(destinoTipo === 'banco' ? '/bancos' : '/cartoes')}>Concluir</Button>
           </div>
         </Card>
       )}
+
+      <HistoricoParcelamentoModal
+        open={!!grupoModalId}
+        onClose={() => setGrupoModalId(null)}
+        grupoParcelaId={grupoModalId}
+      />
     </Screen>
   )
 }
 
 function LinhaTransacao({
-  conciliacao, selecionada, descricao, categoriaId, observacao, categorias, onToggle, onDescricaoChange, onCategoriaChange, onObservacaoChange, onVincular,
+  conciliacao,
+  isCartao,
+  diaFechamento,
+  diaVencimento,
+  selecionada,
+  descricao,
+  categoriaId,
+  observacao,
+  dataCompra,
+  dataVencimento,
+  parcelado,
+  parcelaAtual,
+  totalParcelas,
+  gerarFuturas,
+  categorias,
+  onToggle,
+  onDescricaoChange,
+  onCategoriaChange,
+  onObservacaoChange,
+  onDataCompraChange,
+  onDataVencimentoChange,
+  onParceladoChange,
+  onParcelaAtualChange,
+  onTotalParcelasChange,
+  onGerarFuturasChange,
+  onAbrirHistoricoParcelamento,
+  onVincular,
 }: {
   conciliacao: ResultadoConciliacao
+  isCartao: boolean
+  diaFechamento?: number
+  diaVencimento?: number
   selecionada: boolean
   descricao: string
   categoriaId: string
   observacao: string
+  dataCompra: string
+  dataVencimento: string
+  parcelado: boolean
+  parcelaAtual: number
+  totalParcelas: number
+  gerarFuturas: boolean
   categorias: { id: string; nome: string; parent_id?: string }[]
   onToggle: () => void
   onDescricaoChange: (desc: string) => void
   onCategoriaChange: (id: string) => void
   onObservacaoChange: (obs: string) => void
+  onDataCompraChange: (data: string) => void
+  onDataVencimentoChange: (data: string) => void
+  onParceladoChange: (parcelado: boolean) => void
+  onParcelaAtualChange: (pa: number) => void
+  onTotalParcelasChange: (tp: number) => void
+  onGerarFuturasChange: (gf: boolean) => void
+  onAbrirHistoricoParcelamento: (gid: string) => void
   onVincular: () => void
 }) {
   const { transacao, candidato, status, score } = conciliacao
   const bloqueada = isStatusImportadoOuDuplicado(status)
+  const isParcelaCorrespondente = candidato?.isParcelaCorrespondente && !candidato.lancamento.efetivado
+
   const statusConfig: Record<StatusConciliacao, { label: string; variant: 'success' | 'warning' | 'danger' | 'default' }> = {
     ja_lancado: { label: 'Já lançado', variant: 'success' },
-    possivel: { label: 'Possível correspondência', variant: 'warning' },
+    possivel: { label: isParcelaCorrespondente ? 'Parcela prevista identificada' : 'Possível correspondência', variant: isParcelaCorrespondente ? 'default' : 'warning' },
     nao_lancado: { label: 'Não lançado', variant: 'default' },
     duplicidade: { label: 'Possível duplicidade', variant: 'danger' },
   }
   const config = statusConfig[status]
+
+  // Calcula o mês e ano de referência da cobrança (fatura)
+  const mesAnoReferencia = useMemo(() => {
+    if (!dataVencimento) return ''
+    const [anoStr, mesStr] = dataVencimento.split('-')
+    const mes = parseInt(mesStr, 10)
+    const ano = parseInt(anoStr, 10)
+    const mesesAbrev = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+    return `Fatura ${mesesAbrev[mes - 1] ?? mes}/${ano}`
+  }, [dataVencimento])
 
   // Agrupa categorias em Pais e Filhas (Subcategorias)
   const categoriasAgrupadas = useMemo(() => {
@@ -527,12 +704,43 @@ function LinhaTransacao({
               {transacao.tipo === 'receita' ? '+' : '-'}{formatBRL(transacao.valor)}
             </p>
           </div>
-          <p className="text-[11px] text-[var(--text-muted)] mb-1.5 flex items-center gap-1.5 flex-wrap">
-            <span>{new Date(`${transacao.data}T12:00:00`).toLocaleDateString('pt-BR')}</span>
-            <Badge variant={config.variant}>{config.label} · {score} pts</Badge>
-          </p>
 
-          {candidato && (
+          <div className="text-[11px] text-[var(--text-muted)] mb-1.5 flex items-center gap-1.5 flex-wrap">
+            <span>{new Date(`${dataCompra || transacao.data}T12:00:00`).toLocaleDateString('pt-BR')}</span>
+            <Badge variant={config.variant}>{config.label} · {score} pts</Badge>
+            {isCartao && mesAnoReferencia && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-muted)] font-semibold text-[var(--primary)]">
+                {mesAnoReferencia}
+              </span>
+            )}
+          </div>
+
+          {/* Banner de Parcela Prévia Encontrada */}
+          {isParcelaCorrespondente && candidato?.lancamento && (
+            <div className="mb-2 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 space-y-1">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="font-bold flex items-center gap-1.5">
+                  <CheckCircle2 size={14} className="text-blue-400" />
+                  Parcela prevista encontrada ({candidato.lancamento.parcela_atual}/{candidato.lancamento.total_parcelas})
+                </span>
+                {candidato.lancamento.grupo_parcela_id && (
+                  <button
+                    type="button"
+                    onClick={() => onAbrirHistoricoParcelamento(candidato.lancamento.grupo_parcela_id!)}
+                    className="text-[11px] underline font-semibold text-blue-300 hover:text-white transition-colors flex items-center gap-1"
+                  >
+                    <Layers size={12} /> Ver histórico do parcelamento
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-[var(--text-muted)]">
+                Essa parcela já havia sido planejada nas faturas. Ao importar, o sistema confirmará este registro existente sem criar duplicidade.
+              </p>
+            </div>
+          )}
+
+          {/* Candidato normal sem ser parcela correspondente */}
+          {candidato && !isParcelaCorrespondente && (
             <div className="mb-2 rounded-lg bg-[var(--bg-muted)] px-2.5 py-2 text-[11px] text-[var(--text-muted)]">
               Lançamento encontrado: <strong className="text-[var(--text)]">{candidato.lancamento.descricao}</strong>
               {candidato.diferencaDias > 0 && ` · ${candidato.diferencaDias} dia${candidato.diferencaDias > 1 ? 's' : ''} de diferença`}
@@ -543,7 +751,126 @@ function LinhaTransacao({
           )}
 
           {!bloqueada && (
-            <div className="mt-2.5 space-y-2">
+            <div className="mt-2.5 space-y-2.5">
+              {/* Diferenciação de Datas: Data da Compra e Data de Cobrança na Fatura */}
+              {isCartao && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 rounded-xl bg-[var(--bg-muted)] border border-[var(--border)]">
+                  <div>
+                    <label className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider block mb-1">
+                      Data da compra (original)
+                    </label>
+                    <input
+                      type="date"
+                      value={dataCompra}
+                      onChange={e => onDataCompraChange(e.target.value)}
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider block">
+                        Data de cobrança (fatura)
+                      </label>
+                      {mesAnoReferencia && (
+                        <span className="text-[9px] font-bold text-[var(--primary)] px-1.5 py-0.5 rounded bg-[var(--primary-soft)]">
+                          {mesAnoReferencia}
+                        </span>
+                      )}
+                    </div>
+                    <input
+                      type="date"
+                      value={dataVencimento}
+                      onChange={e => onDataVencimentoChange(e.target.value)}
+                      className="w-full bg-[var(--bg-elevated)] border border-[var(--border)] rounded-lg px-2.5 py-1.5 text-xs font-semibold text-[var(--text)] focus:outline-none focus:border-[var(--primary)]"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Seção de Compra Parcelada e Geração de Parcelas Futuras */}
+              {isCartao && transacao.tipo === 'despesa' && (
+                <div className="p-2.5 rounded-xl bg-[var(--bg-muted)] border border-[var(--border)] space-y-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-[var(--text)]">
+                      <input
+                        type="checkbox"
+                        checked={parcelado}
+                        onChange={e => onParceladoChange(e.target.checked)}
+                        className="w-4 h-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)] accent-[var(--primary)] cursor-pointer"
+                      />
+                      <span className="flex items-center gap-1.5">
+                        <CreditCard size={13} className="text-[var(--primary)]" />
+                        Compra parcelada
+                      </span>
+                    </label>
+
+                    {parcelado && (
+                      <div className="flex items-center gap-1 text-xs">
+                        <span className="text-[11px] text-[var(--text-muted)]">Parcela</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={totalParcelas}
+                          value={parcelaAtual}
+                          onChange={e => onParcelaAtualChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                          className="w-12 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-1.5 py-0.5 text-xs text-center font-bold text-[var(--text)]"
+                        />
+                        <span className="text-[11px] text-[var(--text-muted)]">de</span>
+                        <input
+                          type="number"
+                          min={2}
+                          max={48}
+                          value={totalParcelas}
+                          onChange={e => onTotalParcelasChange(Math.max(2, parseInt(e.target.value, 10) || 2))}
+                          className="w-12 bg-[var(--bg-elevated)] border border-[var(--border)] rounded px-1.5 py-0.5 text-xs text-center font-bold text-[var(--text)]"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {parcelado && (
+                    <div className="pt-2 border-t border-[var(--border)] space-y-2">
+                      {parcelaAtual < totalParcelas ? (
+                        <>
+                          <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-[var(--text)]">
+                            <input
+                              type="checkbox"
+                              checked={gerarFuturas}
+                              onChange={e => onGerarFuturasChange(e.target.checked)}
+                              className="w-4 h-4 rounded border-[var(--border)] text-[var(--primary)] focus:ring-[var(--primary)] accent-[var(--primary)] cursor-pointer"
+                            />
+                            <span>Gerar parcelas futuras automaticamente?</span>
+                          </label>
+
+                          {gerarFuturas ? (
+                            <div className="p-2 rounded-lg bg-[var(--primary-soft)] text-[11px] text-[var(--primary)] space-y-1">
+                              <p className="font-semibold flex items-center gap-1">
+                                <Clock size={12} />
+                                {totalParcelas - parcelaAtual} parcelas futuras restantes serão geradas
+                              </p>
+                              <p className="text-[10px] text-[var(--text-muted)]">
+                                Parcelas {parcelaAtual + 1}/{totalParcelas} até {totalParcelas}/{totalParcelas} nos meses subsequentes com valor de {formatBRL(transacao.valor)} cada, respeitando os vencimentos de fatura.
+                              </p>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-[var(--text-muted)]">
+                              Marque para programar automaticamente as parcelas {parcelaAtual + 1}/{totalParcelas} a {totalParcelas}/{totalParcelas} nas próximas faturas.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5">
+                          <CheckCircle2 size={13} className="text-[var(--success)]" />
+                          Última parcela ({totalParcelas}/{totalParcelas}) — não há parcelas futuras a gerar.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Descrição e Estabelecimento */}
               <div>
                 <label className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider block mb-1">
                   Estabelecimento / Descrição
@@ -557,6 +884,7 @@ function LinhaTransacao({
                 />
               </div>
 
+              {/* Categoria e Observação */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-[var(--text-muted)] font-semibold uppercase tracking-wider block mb-1">

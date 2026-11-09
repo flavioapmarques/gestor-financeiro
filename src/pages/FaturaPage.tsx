@@ -9,6 +9,7 @@ import { Button, Card, SectionTitle, Badge } from '../ui/primitives'
 import { ProgressBar, TxIcon } from '../ui/finance'
 import { PagarFaturaModal } from '../components/cartoes/PagarFaturaModal'
 import { FormLancamentoModal } from '../components/lancamentos/FormLancamentoModal'
+import { HistoricoParcelamentoModal } from '../components/cartoes/HistoricoParcelamentoModal'
 import type { Lancamento } from '../lib/supabase'
 
 function ConfirmarExclusaoModal({ lancamento, onClose }: { lancamento: Lancamento; onClose: () => void }) {
@@ -90,6 +91,7 @@ export function FaturaPage() {
   const [modalLancamento, setModalLancamento] = useState(false)
   const [lancamentoSelecionado, setLancamentoSelecionado] = useState<Lancamento | null>(null)
   const [excluindo, setExcluindo] = useState<Lancamento | null>(null)
+  const [grupoHistoricoId, setGrupoHistoricoId] = useState<string | null>(null)
 
   const reabrirFatura = useReabrirFatura()
   const { data: cartoes = [] } = useCartoes()
@@ -184,7 +186,23 @@ export function FaturaPage() {
                   <p className="text-sm font-semibold truncate">{l.descricao}</p>
                   <p className="text-[11px] text-[var(--text-muted)]">
                     {l.data_vencimento_parcela ?? l.data}
-                    {l.parcelado && ` · ${l.parcela_atual}/${l.total_parcelas}x`}
+                    {l.parcelado && (
+                      l.grupo_parcela_id ? (
+                        <>
+                          {' · '}
+                          <button
+                            type="button"
+                            onClick={() => setGrupoHistoricoId(l.grupo_parcela_id!)}
+                            className="font-bold text-[var(--primary)] hover:underline"
+                            title="Ver histórico completo das parcelas"
+                          >
+                            {l.parcela_atual}/{l.total_parcelas}x
+                          </button>
+                        </>
+                      ) : (
+                        ` · ${l.parcela_atual}/${l.total_parcelas}x`
+                      )
+                    )}
                     {l.categoria && ` · ${l.categoria.nome}`}
                   </p>
                 </div>
@@ -220,9 +238,19 @@ export function FaturaPage() {
       {parcelasFuturas.length > 0 && (
         <>
           <SectionTitle title="Parcelas em andamento" />
-          <Card className="mb-6 text-sm text-[var(--text-muted)] space-y-2">
+          <Card className="mb-6 text-sm text-[var(--text-muted)] divide-y divide-[var(--border)]">
             {parcelasFuturas.map(l => (
-              <p key={l.id}>{l.descricao} — {l.parcela_atual}/{l.total_parcelas}</p>
+              <div key={l.id} className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+                <button
+                  type="button"
+                  onClick={() => l.grupo_parcela_id && setGrupoHistoricoId(l.grupo_parcela_id)}
+                  className="font-semibold text-xs text-[var(--text)] hover:text-[var(--primary)] text-left hover:underline"
+                  title="Ver histórico do parcelamento"
+                >
+                  {l.descricao} — {l.parcela_atual}/{l.total_parcelas}
+                </button>
+                <span className="font-mono text-xs text-[var(--danger)] tabular-nums">-{formatBRL(l.valor)}</span>
+              </div>
             ))}
           </Card>
         </>
@@ -290,6 +318,12 @@ export function FaturaPage() {
           onClose={() => setExcluindo(null)}
         />
       )}
+
+      <HistoricoParcelamentoModal
+        open={!!grupoHistoricoId}
+        onClose={() => setGrupoHistoricoId(null)}
+        grupoParcelaId={grupoHistoricoId}
+      />
     </Screen>
   )
 }

@@ -12,6 +12,8 @@ export interface TransacaoOfx {
   valor: number // sempre positivo — o sinal vira o campo `tipo`
   tipo: 'receita' | 'despesa'
   descricao: string
+  /** Data da compra original (ex: tag DTUSER do OFX), quando informada separadamente da data de cobrança */
+  dataCompra?: string
 }
 
 export interface ExtratoOfx {
@@ -72,6 +74,7 @@ export function parseOfx(conteudo: string): ExtratoOfx {
   const transacoes: TransacaoOfx[] = []
   for (const bloco of blocosTransacao) {
     const dataRaw = extrairTag(bloco, 'DTPOSTED')
+    const dtUserRaw = extrairTag(bloco, 'DTUSER')
     const valorRaw = extrairTag(bloco, 'TRNAMT')
     const fitid = extrairTag(bloco, 'FITID')
     const memo = extrairTag(bloco, 'MEMO')
@@ -80,6 +83,7 @@ export function parseOfx(conteudo: string): ExtratoOfx {
     if (!dataRaw || !valorRaw) continue // transação sem data ou valor não é aproveitável
 
     const data = parseDataOfx(dataRaw)
+    const dataCompra = dtUserRaw ? parseDataOfx(dtUserRaw) ?? undefined : undefined
     const valorComSinal = parseValorOfx(valorRaw)
     if (!data || valorComSinal === null || valorComSinal === 0) continue
 
@@ -88,6 +92,7 @@ export function parseOfx(conteudo: string): ExtratoOfx {
     transacoes.push({
       fitid: fitid || `${data}-${valorComSinal}-${descricao}`, // fallback se o banco não informar FITID
       data,
+      dataCompra,
       valor: Math.abs(valorComSinal),
       tipo: valorComSinal < 0 ? 'despesa' : 'receita',
       descricao,

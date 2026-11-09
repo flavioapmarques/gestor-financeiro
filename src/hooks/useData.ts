@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { requireUserId } from '../lib/auth'
 import { useStore } from '../lib/store'
 import { gerarParcelas, gerarRecorrencias, tagPagamentoFatura, mesVencimentoFatura, mesEfetivo, isPagamentoFatura } from '../lib/lancamentos'
+import { gerarParcelasFuturasOfx } from '../lib/parcelamentoOfx'
 import { primeiroDiaMes, ultimoDiaMes, subtrairMeses } from '../lib/utils'
 import {
   supabase,
@@ -433,11 +434,18 @@ export function useLancamentosParaConciliacao(destino: { tipo: 'banco' | 'cartao
 export interface TransacaoParaImportar {
   fitid: string
   data: string
+  dataVencimentoParcela?: string
   valor: number
   tipo: 'receita' | 'despesa'
   descricao: string
   categoria_id?: string
   observacao?: string
+  parcelado?: boolean
+  parcelaAtual?: number
+  totalParcelas?: number
+  grupoParcelaId?: string
+  gerarParcelasFuturas?: boolean
+  atualizarLancamentoId?: string
 }
 
 export interface ConciliacaoParaImportar {
@@ -499,9 +507,53 @@ export function useImportarOfx() {
         console.warn('Registro em ofx_importacoes ignorado (tabela opcional):', err)
       }
 
-      // 2. Mapeia os lançamentos para inserção
-      const registros = transacoes.map(t => {
-        const dataVencimentoParcela =
+      // 2. Separa transações que atualizam lançamentos já existentes (ex: parcelas futuras previstas encontradas)
+      const transacoesParaAtualizar = transacoes.filter(t => !!t.atualizarLancamentoId)
+      const transacoesParaInserir = transacoes.filter(t => !t.atualizarLancamentoId)
+
+      const idsAtualizadosPorFitid = new Map<string, string>()
+
+      for (const t of transacoesParaAtualizar) {
+        try {
+          const { data: existente } = await supabase
+            .from('lancamentos')
+            .select('tags')
+            .eq('id', t.atualizarLancamentoId!)
+            .eq('user_id', uid)
+            .maybeSingle()
+
+          const tagsAtuais = existente?.tags ?? []
+          const novasTags = Array.from(new Set([...tagsAtuais, `ofx:${t.fitid}`]))
+
+          await supabase
+            .from('lancamentos')
+            .update({
+              efetivado: true,
+              ofx_transacao_id: t.fitid,
+              tags: novasTags,
+              descricao: t.descricao,
+              categoria_id: t.categoria_id || undefined,
+              observacao: t.observacao || undefined,
+              data: t.data,
+              data_vencimento_parcela: t.dataVencimentoParcela || undefined,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', t.atualizarLancamentoId!)
+            .eq('user_id', uid)
+
+          idsAtualizadosPorFitid.set(t.fitid, t.atualizarLancamentoId!)
+        } catch (errAtualizar) {
+          console.warn('Erro ao atualizar parcela existente:', errAtualizar)
+        }
+      }
+
+      // 3. Mapeia os novos lançamentos para inserção
+      const registros: any[] = []
+
+      for (const t of transacoesParaInserir) {
+        const grupoParcelaId = t.grupoParcelaId || (t.parcelado ? crypto.randomUUID() : undefined)
+
+        const dataVencimentoParcela = t.dataVencimentoParcela ?? (
           destino.tipo === 'cartao' && destino.diaFechamento != null && destino.diaVencimento != null && t.tipo === 'despesa'
             ? (() => {
                 const venc = mesVencimentoFatura(t.data, destino.diaFechamento!, destino.diaVencimento!)
@@ -510,8 +562,9 @@ export function useImportarOfx() {
                 return `${venc.ano}-${String(venc.mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
               })()
             : undefined
+        )
 
-        return {
+        registros.push({
           user_id: uid,
           tipo: t.tipo,
           descricao: t.descricao,
@@ -522,40 +575,94 @@ export function useImportarOfx() {
           banco_id: destino.tipo === 'banco' ? destino.id : undefined,
           cartao_id: destino.tipo === 'cartao' ? destino.id : undefined,
           ofx_transacao_id: t.fitid,
-          parcelado: false,
+          parcelado: t.parcelado ?? false,
+          parcela_atual: t.parcelado ? (t.parcelaAtual ?? 1) : undefined,
+          total_parcelas: t.parcelado ? (t.totalParcelas ?? 1) : undefined,
+          grupo_parcela_id: grupoParcelaId,
           recorrente: false,
           efetivado: true, // já aconteceu de verdade — veio do extrato do banco/cartão
           tags: [`ofx:${t.fitid}`],
           data_vencimento_parcela: dataVencimentoParcela,
-        }
-      })
+        })
 
-      // 3. Insere os lançamentos no banco de dados
-      let inseridosData: { id: string; ofx_transacao_id?: string }[] | null = null
-      const { data: inseridosRes, error: insercaoError } = await supabase
-        .from('lancamentos')
-        .insert(registros)
-        .select('id, ofx_transacao_id')
+        // Se o usuário optou por gerar parcelas futuras automaticamente
+        if (
+          t.gerarParcelasFuturas &&
+          t.parcelaAtual &&
+          t.totalParcelas &&
+          t.totalParcelas > t.parcelaAtual &&
+          destino.tipo === 'cartao' &&
+          dataVencimentoParcela
+        ) {
+          const descricaoBase = t.descricao.replace(/\s*\(\d+\/\d+\)/, '').replace(/\s*\d+\/\d+/, '').trim() || t.descricao
+          const futuras = gerarParcelasFuturasOfx({
+            parcelaAtual: t.parcelaAtual,
+            totalParcelas: t.totalParcelas,
+            valorParcela: t.valor,
+            dataCompra: t.data,
+            dataVencimentoParcelaAtual: dataVencimentoParcela,
+            descricaoBase,
+            categoriaId: t.categoria_id,
+            observacao: t.observacao,
+            cartaoId: destino.id,
+            grupoParcelaId: grupoParcelaId!,
+            fitidOrigem: t.fitid,
+          })
 
-      if (insercaoError) {
-        // Se falhar porque a coluna ofx_transacao_id ainda não foi criada no banco
-        if (insercaoError.message?.includes('ofx_transacao_id') || insercaoError.code === 'PGRST204') {
-          const registrosSemOfxId = registros.map(({ ofx_transacao_id, ...r }) => r)
-          const { error: retryError } = await supabase.from('lancamentos').insert(registrosSemOfxId)
-          if (retryError) {
-            throw new Error(retryError.message || retryError.details || 'Erro ao salvar lançamentos no banco.')
+          for (const f of futuras) {
+            registros.push({
+              user_id: uid,
+              tipo: f.tipo,
+              descricao: f.descricao,
+              valor: f.valor,
+              data: f.data,
+              categoria_id: f.categoria_id || undefined,
+              observacao: f.observacao || undefined,
+              cartao_id: f.cartao_id,
+              parcelado: true,
+              parcela_atual: f.parcela_atual,
+              total_parcelas: f.total_parcelas,
+              grupo_parcela_id: f.grupo_parcela_id,
+              recorrente: false,
+              efetivado: false, // Prevista
+              tags: f.tags,
+              data_vencimento_parcela: f.data_vencimento_parcela,
+            })
           }
-          return { inseridos: registros.length }
         }
-        throw new Error(insercaoError.message || insercaoError.details || 'Erro ao salvar lançamentos no banco.')
       }
 
-      inseridosData = inseridosRes
+      // 4. Insere os lançamentos no banco de dados (se houver novos)
+      let inseridosData: { id: string; ofx_transacao_id?: string }[] | null = null
+      if (registros.length > 0) {
+        const { data: inseridosRes, error: insercaoError } = await supabase
+          .from('lancamentos')
+          .insert(registros)
+          .select('id, ofx_transacao_id')
 
-      // 4. Salva detalhamento das transações se ofx_transacoes existir
-      if (importacaoId && inseridosData) {
+        if (insercaoError) {
+          // Se falhar porque a coluna ofx_transacao_id ainda não foi criada no banco
+          if (insercaoError.message?.includes('ofx_transacao_id') || insercaoError.code === 'PGRST204') {
+            const registrosSemOfxId = registros.map(({ ofx_transacao_id, ...r }) => r)
+            const { error: retryError } = await supabase.from('lancamentos').insert(registrosSemOfxId)
+            if (retryError) {
+              throw new Error(retryError.message || retryError.details || 'Erro ao salvar lançamentos no banco.')
+            }
+            return { inseridos: registros.length + transacoesParaAtualizar.length }
+          }
+          throw new Error(insercaoError.message || insercaoError.details || 'Erro ao salvar lançamentos no banco.')
+        }
+
+        inseridosData = inseridosRes
+      }
+
+      // 5. Salva detalhamento das transações se ofx_transacoes existir
+      if (importacaoId) {
         try {
-          const idsPorFitid = new Map((inseridosData ?? []).map(item => [item.ofx_transacao_id, item.id]))
+          const idsPorFitid = new Map([
+            ...(inseridosData ?? []).map(item => [item.ofx_transacao_id, item.id] as [string, string]),
+            ...idsAtualizadosPorFitid.entries(),
+          ])
           await supabase.from('ofx_transacoes').insert(conciliacoes.map(item => ({
             importacao_id: importacaoId,
             user_id: uid,
@@ -575,7 +682,7 @@ export function useImportarOfx() {
         }
       }
 
-      return { inseridos: registros.length }
+      return { inseridos: registros.length + transacoesParaAtualizar.length }
     },
     onSuccess: () => invalidateDadosFinanceiros(qc, userId),
   })
@@ -756,6 +863,26 @@ function invalidateDadosFinanceiros(qc: ReturnType<typeof useQueryClient>, userI
   qc.invalidateQueries({ queryKey: ['evolucao-mensal', userId] })
   qc.invalidateQueries({ queryKey: ['historico-descricoes', userId] })
   qc.invalidateQueries({ queryKey: ['limite-utilizado-cartao', userId] })
+  qc.invalidateQueries({ queryKey: ['grupo-parcela', userId] })
+}
+
+export function useLancamentosGrupoParcela(grupoParcelaId?: string | null) {
+  const userId = useStore(s => s.userId)
+  return useQuery({
+    queryKey: ['grupo-parcela', userId, grupoParcelaId],
+    enabled: !!userId && !!grupoParcelaId,
+    queryFn: async () => {
+      const uid = await requireUserId()
+      const { data, error } = await supabase
+        .from('lancamentos')
+        .select(`*, categoria:categorias(nome, cor), cartao:cartoes(nome, bandeira, dia_fechamento, dia_vencimento)`)
+        .eq('user_id', uid)
+        .eq('grupo_parcela_id', grupoParcelaId!)
+        .order('parcela_atual', { ascending: true })
+      if (error) throw error
+      return data as (Lancamento & { cartao?: Cartao })[]
+    },
+  })
 }
 
 // ── MUTATIONS ──────────────────────────────────────────────

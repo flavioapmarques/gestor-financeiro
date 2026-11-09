@@ -1,28 +1,30 @@
 import type { Lancamento } from './supabase'
 import type { TransacaoOfx } from './ofx'
+import { extrairDadosParcelamentoDescricao } from './parcelamentoOfx'
 
 export type StatusConciliacao = 'ja_lancado' | 'possivel' | 'nao_lancado' | 'duplicidade'
 
 export interface ConfigConciliacaoOfx {
-  toleranciaDias: number
   pesoValor: number
   pesoDataExata: number
   pesoDataTolerada: number
   pesoDescricao: number
+  toleranciaDias: number
 }
 
 export const CONFIG_CONCILIACAO_OFX: ConfigConciliacaoOfx = {
-  toleranciaDias: 3,
   pesoValor: 50,
   pesoDataExata: 30,
   pesoDataTolerada: 20,
   pesoDescricao: 20,
+  toleranciaDias: 3,
 }
 
 export interface CandidatoConciliacao {
   lancamento: Lancamento
   score: number
   diferencaDias: number
+  isParcelaCorrespondente?: boolean
 }
 
 export interface ResultadoConciliacao {
@@ -34,8 +36,25 @@ export interface ResultadoConciliacao {
 }
 
 const PALAVRAS_BANCARIAS = new Set([
-  'compra', 'pagamento', 'debito', 'credito', 'cartao', 'pix', 'transferencia',
-  'ted', 'doc', 'tarifa', 'tar', 'saque', 'envio', 'recebimento', 'via',
+  'compra',
+  'debito',
+  'credito',
+  'transf',
+  'transferencia',
+  'pix',
+  'ted',
+  'doc',
+  'pagto',
+  'pagamento',
+  'recarga',
+  'tarifa',
+  'iof',
+  'saque',
+  'autoatendimento',
+  'banco',
+  'cartao',
+  'parc',
+  'parcela',
 ])
 
 export function normalizarDescricaoOfx(descricao: string): string {
@@ -90,7 +109,35 @@ function scoreCandidato(
   if (transacao.tipo !== lancamento.tipo) return null
   if (Math.round(transacao.valor * 100) !== Math.round(lancamento.valor * 100)) return null
 
-  const dias = diferencaDias(transacao.data, lancamento.data)
+  // 1. Verifica se corresponde a uma parcela futura previamente gerada
+  const infoTx = extrairDadosParcelamentoDescricao(transacao.descricao)
+  const isParcelaCorrespondente =
+    lancamento.parcelado &&
+    infoTx.parcelado &&
+    lancamento.parcela_atual === infoTx.parcelaAtual &&
+    lancamento.total_parcelas === infoTx.totalParcelas &&
+    similaridadeDescricao(infoTx.descricaoBase, lancamento.descricao) >= 0.35
+
+  if (isParcelaCorrespondente) {
+    const diasVenc = lancamento.data_vencimento_parcela
+      ? diferencaDias(transacao.data, lancamento.data_vencimento_parcela)
+      : diferencaDias(transacao.data, lancamento.data)
+    return {
+      lancamento,
+      score: 100,
+      diferencaDias: diasVenc,
+      isParcelaCorrespondente: true,
+    }
+  }
+
+  // 2. Cálculo regular de diferença de datas
+  // Para cartões, a data do extrato pode refletir a data da compra ou a data de vencimento da fatura
+  const diasCompra = diferencaDias(transacao.data, lancamento.data)
+  const diasVenc = lancamento.data_vencimento_parcela
+    ? diferencaDias(transacao.data, lancamento.data_vencimento_parcela)
+    : Infinity
+  const dias = Math.min(diasCompra, diasVenc)
+
   if (dias > config.toleranciaDias) return null
 
   let score = config.pesoValor
@@ -127,6 +174,13 @@ export function conciliarTransacaoOfx(
   if (mesmaChave) {
     return { transacao, status: 'duplicidade', score: melhor.score, candidato: melhor, candidatos }
   }
+
+  // Se a melhor correspondência é uma parcela pré-gerada que ainda NÃO foi efetivada:
+  // ela é uma correspondência para atualização/confirmação (status 'possivel' com score 100 e flag)
+  if (melhor && melhor.isParcelaCorrespondente && !melhor.lancamento.efetivado) {
+    return { transacao, status: 'possivel', score: 100, candidato: melhor, candidatos }
+  }
+
   if (melhor && melhor.score >= 100) return { transacao, status: 'ja_lancado', score: melhor.score, candidato: melhor, candidatos }
   if (melhor && melhor.score >= 70) return { transacao, status: 'possivel', score: melhor.score, candidato: melhor, candidatos }
   return { transacao, status: 'nao_lancado', score: melhor?.score ?? 0, candidato: melhor, candidatos }

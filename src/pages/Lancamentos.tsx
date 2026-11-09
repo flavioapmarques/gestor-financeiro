@@ -12,6 +12,7 @@ import type { Lancamento } from '../lib/supabase'
 import { FormLancamentoModal } from '../components/lancamentos/FormLancamentoModal'
 import { PagarLancamentoModal } from '../components/lancamentos/PagarLancamentoModal'
 import { ModalLancamentoVoz } from '../components/voz/ModalLancamentoVoz'
+import { HistoricoParcelamentoModal } from '../components/cartoes/HistoricoParcelamentoModal'
 import { TxIcon } from '../ui/finance'
 import { FAB, PageHeader } from '../ui/Screen'
 
@@ -34,7 +35,17 @@ function agruparPorData(lancamentos: Lancamento[]) {
     .map(([data, itens]) => ({ data, label: labelData(data), itens }))
 }
 
-function LancamentoRow({ lancamento, onEditar, onPagar }: { lancamento: Lancamento; onEditar: () => void; onPagar: () => void }) {
+function LancamentoRow({
+  lancamento,
+  onEditar,
+  onPagar,
+  onVerHistoricoParcela,
+}: {
+  lancamento: Lancamento
+  onEditar: () => void
+  onPagar: () => void
+  onVerHistoricoParcela?: (grupoId: string) => void
+}) {
   const deletar = useDeletarLancamento()
   const [confirmando, setConfirmando] = useState(false)
 
@@ -71,7 +82,23 @@ function LancamentoRow({ lancamento, onEditar, onPagar }: { lancamento: Lancamen
           </div>
           <p className="text-[11px] text-[var(--text-muted)]">
             {lancamento.categoria?.nome ?? (lancamento.tipo==='transferencia' ? 'Transferência' : '—')}
-            {lancamento.parcelado && ` · ${lancamento.parcela_atual}/${lancamento.total_parcelas}x`}
+            {lancamento.parcelado && (
+              lancamento.grupo_parcela_id ? (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={() => onVerHistoricoParcela?.(lancamento.grupo_parcela_id!)}
+                    className="font-bold text-[var(--primary)] hover:underline"
+                    title="Ver histórico completo das parcelas"
+                  >
+                    {lancamento.parcela_atual}/{lancamento.total_parcelas}x
+                  </button>
+                </>
+              ) : (
+                ` · ${lancamento.parcela_atual}/${lancamento.total_parcelas}x`
+              )
+            )}
             {lancamento.cartao && ` · ${lancamento.cartao.nome}`}
             {lancamento.banco && ` · ${lancamento.banco.instituicao}`}
             {!lancamento.efetivado && <span className="text-[var(--warning)]"> · Pendente</span>}
@@ -141,6 +168,7 @@ export function Lancamentos() {
   const [modalVozAberto, setModalVozAberto] = useState(false)
   const [lancamentoSelecionado, setLancamentoSelecionado] = useState<Lancamento | null>(null)
   const [lancamentoAPagar, setLancamentoAPagar] = useState<Lancamento | null>(null)
+  const [grupoHistoricoId, setGrupoHistoricoId] = useState<string | null>(null)
 
   const lancamentosFiltrados = useMemo(() => lancamentos
     .filter(l => !l.cartao_id) // cartão só aparece no extrato do cartão
@@ -315,7 +343,8 @@ export function Lancamentos() {
                 {grupo.itens.map(l => (
                   <LancamentoRow key={l.id} lancamento={l}
                     onEditar={() => { setLancamentoSelecionado(l); setModalAberto(true) }}
-                    onPagar={() => setLancamentoAPagar(l)} />
+                    onPagar={() => setLancamentoAPagar(l)}
+                    onVerHistoricoParcela={gid => setGrupoHistoricoId(gid)} />
                 ))}
               </div>
             </section>
@@ -343,6 +372,12 @@ export function Lancamentos() {
       <ModalLancamentoVoz
         open={modalVozAberto}
         onClose={() => setModalVozAberto(false)}
+      />
+
+      <HistoricoParcelamentoModal
+        open={!!grupoHistoricoId}
+        onClose={() => setGrupoHistoricoId(null)}
+        grupoParcelaId={grupoHistoricoId}
       />
     </div>
   )

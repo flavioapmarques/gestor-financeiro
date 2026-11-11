@@ -14,7 +14,7 @@ import { PagarLancamentoModal } from '../components/lancamentos/PagarLancamentoM
 import { ModalLancamentoVoz } from '../components/voz/ModalLancamentoVoz'
 import { HistoricoParcelamentoModal } from '../components/cartoes/HistoricoParcelamentoModal'
 import { TxIcon } from '../ui/finance'
-import { FAB, PageHeader } from '../ui/Screen'
+import { PageHeader } from '../ui/Screen'
 
 type FiltroTipo = 'todos' | 'receita' | 'despesa' | 'parcelado' | 'recorrente' | 'transferencia'
 
@@ -351,8 +351,6 @@ export function Lancamentos() {
           ))}
         </div>
       </div>
-
-      <FAB onClick={() => { setLancamentoSelecionado(null); setModalAberto(true) }} />
 
       <FormLancamentoModal
         open={modalAberto}

@@ -83,15 +83,34 @@ export function ProgressBar({ value, max, color = 'var(--primary)' }: { value: n
   )
 }
 
-export function MoneyDisplay({ value, size = 'lg', positive, oculto }: { value: number; size?: 'sm' | 'md' | 'lg' | 'xl'; positive?: boolean; oculto?: boolean }) {
+export function MoneyDisplay({
+  value,
+  size = 'lg',
+  positive,
+  oculto,
+  className = '',
+}: {
+  value: number
+  size?: 'sm' | 'md' | 'lg' | 'xl'
+  positive?: boolean
+  oculto?: boolean
+  className?: string
+}) {
   const sizes = { sm: 'text-base', md: 'text-2xl', lg: 'text-3xl', xl: 'text-4xl' }
   // Se 'positive' não for informado, detecta automaticamente pelo sinal real do valor
   // (ex.: saldo total negativo deve aparecer em vermelho com o "-", não como se fosse positivo)
   const negativo = positive === false || (positive === undefined && value < 0)
   const sign = positive === true ? '+' : negativo ? '-' : ''
-  const cor = positive === true ? 'text-[var(--success)]' : negativo ? 'text-[var(--danger)]' : 'text-[var(--text)]'
+  const hasCustomTextColor = /\btext-/.test(className)
+  const cor = hasCustomTextColor
+    ? ''
+    : positive === true
+      ? 'text-[var(--success)]'
+      : negativo
+        ? 'text-[var(--danger)]'
+        : 'text-white' // Garante texto branco com contraste adequado sobre o fundo roxo
   return (
-    <span className={`font-mono font-bold tracking-tight leading-none ${sizes[size]} ${cor}`}>
+    <span className={`font-mono font-bold tracking-tight leading-none ${sizes[size]} ${cor} ${className}`.trim()}>
       {oculto ? 'R$ ••••••' : <>{sign}{formatBRL(Math.abs(value))}</>}
     </span>
   )

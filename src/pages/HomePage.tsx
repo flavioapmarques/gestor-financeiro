@@ -126,7 +126,12 @@ export function HomePage() {
             </div>
             <div className="absolute top-0 right-0 w-40 h-40 rounded-full bg-white/5 -mr-10 -mt-10 pointer-events-none" />
             <p className="text-[11px] text-white/60 uppercase tracking-widest font-semibold mb-2">Saldo total</p>
-            <MoneyDisplay value={saldoTotal} size="xl" oculto={valoresOcultos} />
+            <MoneyDisplay
+              value={saldoTotal}
+              size="xl"
+              oculto={valoresOcultos}
+              className={saldoTotal < 0 ? 'text-[var(--danger)]' : 'text-white'}
+            />
             <div className="grid grid-cols-2 gap-3 mt-5">
               <div className="bg-white/10 rounded-xl p-3">
                 <p className="text-[10px] text-white/55 uppercase tracking-wider mb-1">Receitas</p>
@@ -167,7 +172,7 @@ export function HomePage() {
                       <span className="w-2 h-2 rounded-full" style={{ background: b.cor ?? '#9D4EDD' }} />
                       <p className="text-[9px] text-white/55 uppercase font-semibold tracking-wider truncate max-w-[80px]">{b.instituicao}</p>
                     </div>
-                    <p className="text-xs font-bold font-mono">{formatBRLOuOculto(b.saldo_atual ?? b.saldo_inicial, valoresOcultos)}</p>
+                    <p className="text-xs font-bold font-mono text-white">{formatBRLOuOculto(b.saldo_atual ?? b.saldo_inicial, valoresOcultos)}</p>
                   </button>
                 ))}
               </div>

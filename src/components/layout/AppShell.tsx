@@ -1,12 +1,20 @@
 import { useState } from 'react'
-import { Outlet, useLocation, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, NavLink } from 'react-router-dom'
 import {
-  Home, Landmark, CreditCard, ArrowLeftRight, User,
-  BarChart2, Wallet, TrendingUp, TrendingDown, ArrowRightLeft, X, ChevronLeft, ChevronRight,
-  Mic, Sparkles,
+  Home,
+  Landmark,
+  CreditCard,
+  ArrowLeftRight,
+  User,
+  BarChart2,
+  Wallet,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
 } from 'lucide-react'
 import { FormLancamentoModal } from '../lancamentos/FormLancamentoModal'
 import { ModalLancamentoVoz } from '../voz/ModalLancamentoVoz'
+import { NovoLancamentoPopover, type TipoLancamentoOpcao } from './NovoLancamentoPopover'
 
 const NAV_ITEMS = [
   { to: '/',            icon: Home,           label: 'Início' },
@@ -24,53 +32,10 @@ const HIDE_NAV = [
   '/receitas', '/estados', '/metas/nova', '/orcamentos/novo', '/bancos/novo', '/importar-ofx',
 ]
 
-type TipoModal = 'receita' | 'despesa' | 'cartao' | 'transferencia' | 'voz' | null
-
-function FABMenu({ onSelect }: { onSelect: (tipo: TipoModal) => void }) {
-  return (
-    <>
-      <div className="fixed inset-0 z-40" onClick={() => onSelect(null)} aria-hidden />
-      <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center animate-slide-up
-                      lg:bottom-auto lg:top-auto lg:left-auto lg:translate-x-0 lg:static lg:flex-col">
-        {/* Opção Lançamento por Voz (IA) em destaque */}
-        <button
-          type="button"
-          onClick={() => onSelect('voz')}
-          className="flex items-center gap-2.5 px-5 py-3.5 rounded-2xl text-sm font-bold text-white shadow-xl w-52 justify-center transition-transform active:scale-95"
-          style={{
-            background: 'linear-gradient(135deg, var(--primary), var(--accent))',
-            boxShadow: '0 6px 24px rgba(124, 58, 237, 0.45)',
-          }}
-        >
-          <Mic size={18} className="animate-pulse" />
-          <span>Lançar por Voz (IA)</span>
-        </button>
-
-        {[
-          { tipo: 'receita'      as TipoModal, label: 'Receita',           color: 'var(--success)', glow: '#00E09644' },
-          { tipo: 'despesa'      as TipoModal, label: 'Despesa',           color: 'var(--danger)',  glow: '#FF6B7A44' },
-          { tipo: 'cartao'       as TipoModal, label: 'Cartão de Crédito', color: '#9D4EDD',         glow: '#9D4EDD44' },
-          { tipo: 'transferencia'as TipoModal, label: 'Transferência',     color: 'var(--accent)',  glow: '#6C8EF544' },
-        ].map(({ tipo, label, color, glow }) => (
-          <button key={tipo} onClick={() => onSelect(tipo)}
-            className="flex items-center gap-3 px-5 py-3 rounded-2xl text-sm font-semibold text-white shadow-lg w-52 justify-center"
-            style={{ background: color, boxShadow: `0 4px 20px ${glow}` }}>
-            {tipo==='receita' && <TrendingUp size={16}/>}
-            {tipo==='despesa' && <TrendingDown size={16}/>}
-            {tipo==='cartao' && <CreditCard size={16}/>}
-            {tipo==='transferencia' && <ArrowRightLeft size={16}/>}
-            {label}
-          </button>
-        ))}
-      </div>
-    </>
-  )
-}
-
 export function AppShell() {
   const { pathname } = useLocation()
   const [fabOpen, setFabOpen] = useState(false)
-  const [modalTipo, setModalTipo] = useState<TipoModal>(null)
+  const [modalTipo, setModalTipo] = useState<TipoLancamentoOpcao | null>(null)
   const [modalAberto, setModalAberto] = useState(false)
   const [modalVozAberto, setModalVozAberto] = useState(false)
   const [sidebarColapsada, setSidebarColapsada] = useState(() => localStorage.getItem('sidebar-colapsada') === '1')
@@ -87,7 +52,7 @@ export function AppShell() {
     pathname.match(/\/cartoes\/[^/]+/) !== null ||
     pathname.match(/\/bancos\/[^/]+/) !== null
 
-  function handleSelect(tipo: TipoModal) {
+  function handleSelect(tipo: TipoLancamentoOpcao) {
     setFabOpen(false)
     if (tipo === 'voz') {
       setModalVozAberto(true)
@@ -124,46 +89,6 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-
-        {/* Botão novo lançamento sidebar */}
-        <div className="px-3 pb-6 relative">
-          {fabOpen && (
-            <div className="mb-2 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => handleSelect('voz')}
-                className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all active:scale-95"
-                style={{ background: 'linear-gradient(135deg, var(--primary), var(--accent))' }}
-              >
-                <Mic size={14} className="animate-pulse" />
-                Lançar por Voz (IA)
-              </button>
-              {([
-                { tipo: 'receita'      as TipoModal, label: 'Receita',           color: 'var(--success)' },
-                { tipo: 'despesa'      as TipoModal, label: 'Despesa',           color: 'var(--danger)' },
-                { tipo: 'cartao'       as TipoModal, label: 'Cartão de Crédito', color: '#9D4EDD' },
-                { tipo: 'transferencia'as TipoModal, label: 'Transferência',     color: 'var(--accent)' },
-              ]).map(({ tipo, label, color }) => (
-                <button key={tipo} onClick={() => handleSelect(tipo)}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold text-white"
-                  style={{ background: color }}>
-                  {tipo==='receita' && <TrendingUp size={14}/>}
-                  {tipo==='despesa' && <TrendingDown size={14}/>}
-                  {tipo==='cartao' && <CreditCard size={14}/>}
-                  {tipo==='transferencia' && <ArrowRightLeft size={14}/>}
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-          <button onClick={() => setFabOpen(v => !v)}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm font-semibold text-white transition-all active:scale-[0.98]"
-            style={{ background: 'var(--primary)', boxShadow: 'var(--shadow-fab)' }}
-            aria-label="Novo lançamento">
-            {fabOpen ? <X size={17}/> : <span className="text-lg font-light leading-none">+</span>}
-            Novo lançamento
-          </button>
-        </div>
       </aside>
 
       <button
@@ -182,82 +107,112 @@ export function AppShell() {
         <Outlet />
       </main>
 
+      {/* ── BOTÃO FLUTUANTE (+) DESKTOP ───────────────────── */}
+      <button
+        type="button"
+        onClick={() => setFabOpen(v => !v)}
+        aria-label={fabOpen ? 'Fechar opções de lançamento' : 'Novo lançamento'}
+        title="Novo lançamento (+)"
+        className="hidden lg:flex fixed bottom-8 right-8 z-40 w-14 h-14 rounded-full text-white items-center justify-center shadow-xl transition-all duration-200 hover:scale-105 active:scale-95 focus:outline-none focus:ring-4 focus:ring-purple-400/30"
+        style={{
+          background: 'linear-gradient(135deg, var(--primary) 0%, #7928CA 100%)',
+          boxShadow: '0 8px 24px rgba(157, 78, 221, 0.45)',
+        }}
+      >
+        <Plus
+          size={26}
+          strokeWidth={2.4}
+          className={`transition-transform duration-200 ${fabOpen ? 'rotate-45' : ''}`}
+        />
+      </button>
+
       {/* ── BOTTOM NAV mobile ─────────────────────────────── */}
       {!hideNav && (
-        <>
-          {fabOpen && <FABMenu onSelect={handleSelect} />}
-          <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 safe-area-pb"
-            style={{
-              background: 'var(--bg-elevated)',
-              borderTop: '1px solid var(--border)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-            }}
-            aria-label="Menu principal">
-            <div className="flex items-end justify-around px-2 pt-2 pb-3 relative max-w-lg mx-auto">
-              {NAV_ITEMS.slice(0, 2).map(({ to, icon: Icon, label }) => (
-                <NavLink key={to} to={to} end={to === '/'}
-                  className={({ isActive }) =>
-                    `flex flex-col items-center gap-0.5 min-w-[52px] py-1 transition-all ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-subtle)]'}`
-                  }>
-                  {({ isActive }) => (
-                    <>
-                      <span className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-[var(--primary-soft)]' : ''}`}>
-                        <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} aria-hidden />
-                      </span>
-                      <span className="text-[9px] font-semibold">{label}</span>
-                    </>
-                  )}
-                </NavLink>
-              ))}
-
-              {/* FAB central */}
-              <div className="flex flex-col items-center">
-                <button type="button" onClick={() => setFabOpen(v => !v)} aria-label="Novo lançamento"
-                  className="w-14 h-14 rounded-2xl text-white flex items-center justify-center transition-all duration-200 active:scale-95 mb-1"
-                  style={{
-                    background: fabOpen ? 'var(--text-muted)' : 'var(--primary)',
-                    boxShadow: 'var(--shadow-fab)',
-                    transform: fabOpen ? 'rotate(45deg)' : 'none',
-                  }}>
-                  <span className="text-2xl font-light leading-none">+</span>
-                </button>
-                <span className="text-[9px] font-semibold text-[var(--text-subtle)]">Novo</span>
-              </div>
-
-              {NAV_ITEMS.slice(2, 4).map(({ to, icon: Icon, label }) => (
-                <NavLink key={to} to={to}
-                  className={({ isActive }) =>
-                    `flex flex-col items-center gap-0.5 min-w-[52px] py-1 transition-all ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-subtle)]'}`
-                  }>
-                  {({ isActive }) => (
-                    <>
-                      <span className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-[var(--primary-soft)]' : ''}`}>
-                        <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} aria-hidden />
-                      </span>
-                      <span className="text-[9px] font-semibold">{label}</span>
-                    </>
-                  )}
-                </NavLink>
-              ))}
-
-              <NavLink to="/perfil"
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-50 safe-area-pb"
+          style={{
+            background: 'var(--bg-elevated)',
+            borderTop: '1px solid var(--border)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
+          aria-label="Menu principal">
+          <div className="flex items-end justify-around px-2 pt-2 pb-3 relative max-w-lg mx-auto">
+            {NAV_ITEMS.slice(0, 2).map(({ to, icon: Icon, label }) => (
+              <NavLink key={to} to={to} end={to === '/'}
                 className={({ isActive }) =>
                   `flex flex-col items-center gap-0.5 min-w-[52px] py-1 transition-all ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-subtle)]'}`
                 }>
                 {({ isActive }) => (
                   <>
                     <span className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-[var(--primary-soft)]' : ''}`}>
-                      <User size={20} strokeWidth={isActive ? 2.2 : 1.8} aria-hidden />
+                      <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} aria-hidden />
                     </span>
-                    <span className="text-[9px] font-semibold">Perfil</span>
+                    <span className="text-[9px] font-semibold">{label}</span>
                   </>
                 )}
               </NavLink>
+            ))}
+
+            {/* FAB central circular (+) */}
+            <div className="flex flex-col items-center">
+              <button
+                type="button"
+                onClick={() => setFabOpen(v => !v)}
+                aria-label={fabOpen ? 'Fechar opções de lançamento' : 'Novo lançamento'}
+                className="w-14 h-14 rounded-full text-white flex items-center justify-center transition-all duration-200 active:scale-95 mb-1 shadow-lg focus:outline-none"
+                style={{
+                  background: 'linear-gradient(135deg, var(--primary) 0%, #7928CA 100%)',
+                  boxShadow: '0 8px 24px rgba(157, 78, 221, 0.45)',
+                }}
+              >
+                <Plus
+                  size={26}
+                  strokeWidth={2.4}
+                  className={`transition-transform duration-200 ${fabOpen ? 'rotate-45' : ''}`}
+                />
+              </button>
+              <span className="text-[9px] font-semibold text-[var(--text-subtle)]">Novo</span>
             </div>
-          </nav>
-        </>
+
+            {NAV_ITEMS.slice(2, 4).map(({ to, icon: Icon, label }) => (
+              <NavLink key={to} to={to}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-0.5 min-w-[52px] py-1 transition-all ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-subtle)]'}`
+                }>
+                {({ isActive }) => (
+                  <>
+                    <span className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-[var(--primary-soft)]' : ''}`}>
+                      <Icon size={20} strokeWidth={isActive ? 2.2 : 1.8} aria-hidden />
+                    </span>
+                    <span className="text-[9px] font-semibold">{label}</span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+
+            <NavLink to="/perfil"
+              className={({ isActive }) =>
+                `flex flex-col items-center gap-0.5 min-w-[52px] py-1 transition-all ${isActive ? 'text-[var(--primary)]' : 'text-[var(--text-subtle)]'}`
+              }>
+              {({ isActive }) => (
+                <>
+                  <span className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-[var(--primary-soft)]' : ''}`}>
+                    <User size={20} strokeWidth={isActive ? 2.2 : 1.8} aria-hidden />
+                  </span>
+                  <span className="text-[9px] font-semibold">Perfil</span>
+                </>
+              )}
+            </NavLink>
+          </div>
+        </nav>
       )}
+
+      {/* ── POPOVER ÚNICO E RESPONSIVO DE LANÇAMENTO ──────── */}
+      <NovoLancamentoPopover
+        open={fabOpen}
+        onClose={() => setFabOpen(false)}
+        onSelect={handleSelect}
+      />
 
       <FormLancamentoModal
         open={modalAberto}

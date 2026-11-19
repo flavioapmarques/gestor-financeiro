@@ -25,6 +25,9 @@ interface AppState {
   setTabAtiva: (tab: string) => void
   valoresOcultos: boolean
   toggleValoresOcultos: () => void
+  sidebarColapsada: boolean
+  setSidebarColapsada: (colapsada: boolean) => void
+  toggleSidebarColapsada: () => void
 }
 
 export const useStore = create<AppState>()(
@@ -52,10 +55,28 @@ export const useStore = create<AppState>()(
       setTabAtiva: (tabAtiva) => set({ tabAtiva }),
       valoresOcultos: false,
       toggleValoresOcultos: () => set((s) => ({ valoresOcultos: !s.valoresOcultos })),
+      sidebarColapsada: typeof window !== 'undefined' && localStorage.getItem('sidebar-colapsada') === '1',
+      setSidebarColapsada: (sidebarColapsada) => {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sidebar-colapsada', sidebarColapsada ? '1' : '0')
+        }
+        set({ sidebarColapsada })
+      },
+      toggleSidebarColapsada: () => set((s) => {
+        const next = !s.sidebarColapsada
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('sidebar-colapsada', next ? '1' : '0')
+        }
+        return { sidebarColapsada: next }
+      }),
     }),
     {
       name: 'gestor-financeiro',
-      partialize: (state) => ({ darkMode: state.darkMode, valoresOcultos: state.valoresOcultos }),
+      partialize: (state) => ({
+        darkMode: state.darkMode,
+        valoresOcultos: state.valoresOcultos,
+        sidebarColapsada: state.sidebarColapsada,
+      }),
     }
   )
 )

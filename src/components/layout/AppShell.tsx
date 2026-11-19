@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Plus,
 } from 'lucide-react'
+import { useStore } from '../../lib/store'
 import { FormLancamentoModal } from '../lancamentos/FormLancamentoModal'
 import { ModalLancamentoVoz } from '../voz/ModalLancamentoVoz'
 import { NovoLancamentoPopover, type TipoLancamentoOpcao } from './NovoLancamentoPopover'
@@ -34,17 +35,14 @@ const HIDE_NAV = [
 
 export function AppShell() {
   const { pathname } = useLocation()
+  const { sidebarColapsada, toggleSidebarColapsada } = useStore()
   const [fabOpen, setFabOpen] = useState(false)
   const [modalTipo, setModalTipo] = useState<TipoLancamentoOpcao | null>(null)
   const [modalAberto, setModalAberto] = useState(false)
   const [modalVozAberto, setModalVozAberto] = useState(false)
-  const [sidebarColapsada, setSidebarColapsada] = useState(() => localStorage.getItem('sidebar-colapsada') === '1')
 
   function alternarSidebar() {
-    setSidebarColapsada(v => {
-      localStorage.setItem('sidebar-colapsada', v ? '0' : '1')
-      return !v
-    })
+    toggleSidebarColapsada()
   }
 
   const hideNav =
@@ -67,37 +65,128 @@ export function AppShell() {
 
       {/* ── SIDEBAR desktop ───────────────────────────────── */}
       <aside className="app-sidebar hidden lg:flex">
-        <div className="px-5 pt-6 pb-4 flex items-center gap-3 border-b border-[var(--border)]">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white" style={{ background: 'var(--primary)' }}>
-            <Wallet size={18} />
+        {/* Cabeçalho da Sidebar (Logo & Marca) */}
+        <div
+          className={`pt-6 pb-4 flex items-center border-b border-[var(--border)] transition-all duration-300 ${
+            sidebarColapsada ? 'px-0 justify-center' : 'px-5 gap-3'
+          }`}
+        >
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-sm transition-transform hover:scale-105"
+            style={{ background: 'linear-gradient(135deg, var(--primary) 0%, #7928CA 100%)' }}
+            title="FMIT - Gestor Financeiro"
+          >
+            <Wallet size={20} />
           </div>
-          <span className="font-bold text-base tracking-tight gradient-text">Gestor</span>
+          {!sidebarColapsada && (
+            <div className="flex flex-col min-w-0 animate-fade-in">
+              <span className="font-bold text-base tracking-tight gradient-text whitespace-nowrap">Gestor</span>
+              <span className="text-[10px] text-[var(--text-muted)] font-medium -mt-1 tracking-wider uppercase whitespace-nowrap">
+                FMIT Finance
+              </span>
+            </div>
+          )}
         </div>
 
-        <nav className="flex-1 px-3 py-3 space-y-0.5" aria-label="Menu principal">
+        {/* Links de navegação */}
+        <nav
+          className={`flex-1 py-4 space-y-1.5 overflow-y-auto overflow-x-hidden scrollbar-none transition-all duration-300 ${
+            sidebarColapsada ? 'px-2' : 'px-3'
+          }`}
+          aria-label="Menu principal"
+        >
           {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
-            <NavLink key={to} to={to} end={to === '/'}
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              title={sidebarColapsada ? label : undefined}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                `group relative flex items-center rounded-xl transition-all duration-150 ${
+                  sidebarColapsada
+                    ? 'justify-center w-11 h-11 mx-auto'
+                    : 'gap-3 px-3.5 py-2.5 text-sm font-medium w-full'
+                } ${
                   isActive
-                    ? 'bg-[var(--primary-soft)] text-[var(--primary)]'
+                    ? 'bg-[var(--primary-soft)] text-[var(--primary)] font-semibold shadow-sm'
                     : 'text-[var(--text-muted)] hover:bg-[var(--bg-muted)] hover:text-[var(--text)]'
                 }`
-              }>
-              <Icon size={18} strokeWidth={2} aria-hidden />
-              {label}
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon
+                    size={20}
+                    strokeWidth={isActive ? 2.4 : 1.9}
+                    className="flex-shrink-0 transition-transform group-hover:scale-110"
+                    aria-hidden
+                  />
+                  {!sidebarColapsada && (
+                    <span className="truncate whitespace-nowrap animate-fade-in">{label}</span>
+                  )}
+
+                  {/* Tooltip flutuante elegante no modo compacto */}
+                  {sidebarColapsada && (
+                    <div
+                      role="tooltip"
+                      className="hidden lg:group-hover:flex items-center absolute left-full ml-3 px-3 py-1.5 rounded-xl bg-[var(--bg-elevated)] border border-[var(--border)] text-xs font-bold text-[var(--text)] whitespace-nowrap shadow-xl z-[70] pointer-events-none animate-fade-in"
+                      style={{
+                        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--border)',
+                      }}
+                    >
+                      {label}
+                      {/* Seta discreta apontando para o ícone */}
+                      <span className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 rotate-45 bg-[var(--bg-elevated)] border-l border-b border-[var(--border)]" />
+                    </div>
+                  )}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
+
+        {/* Rodapé da sidebar com botão de alternância adicional */}
+        <div
+          className={`p-3 border-t border-[var(--border)] mt-auto flex items-center transition-all duration-300 ${
+            sidebarColapsada ? 'justify-center' : 'justify-between'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={alternarSidebar}
+            aria-label={sidebarColapsada ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+            title={sidebarColapsada ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+            className="w-10 h-10 rounded-xl bg-[var(--bg-muted)] hover:bg-[var(--primary-soft)] text-[var(--text-muted)] hover:text-[var(--primary)] flex items-center justify-center transition-all duration-150 group active:scale-95"
+          >
+            {sidebarColapsada ? (
+              <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
+            ) : (
+              <ChevronLeft size={18} className="transition-transform group-hover:-translate-x-0.5" />
+            )}
+          </button>
+          {!sidebarColapsada && (
+            <button
+              type="button"
+              onClick={alternarSidebar}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] font-medium transition-colors pr-2"
+            >
+              Recolher menu
+            </button>
+          )}
+        </div>
       </aside>
 
+      {/* Botão flutuante na borda da barra lateral */}
       <button
         type="button"
         onClick={alternarSidebar}
-        aria-label={sidebarColapsada ? 'Mostrar menu' : 'Ocultar menu'}
+        aria-label={sidebarColapsada ? 'Expandir menu lateral' : 'Recolher menu lateral'}
+        title={sidebarColapsada ? 'Expandir menu lateral' : 'Recolher menu lateral'}
         className={`hidden lg:flex fixed top-6 z-[60] w-6 h-10 items-center justify-center rounded-r-lg
                     bg-[var(--bg-elevated)] border border-l-0 border-[var(--border)] text-[var(--text-muted)]
-                    hover:text-[var(--primary)] transition-all duration-300 ${sidebarColapsada ? 'left-0' : 'left-[var(--sidebar-w)]'}`}
+                    hover:text-[var(--primary)] hover:bg-[var(--bg-muted)] transition-all duration-300 shadow-sm ${
+                      sidebarColapsada ? 'left-[var(--sidebar-collapsed-w)]' : 'left-[var(--sidebar-w)]'
+                    }`}
       >
         {sidebarColapsada ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
       </button>
